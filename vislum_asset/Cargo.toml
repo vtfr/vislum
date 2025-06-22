@@ -1,0 +1,12 @@
+[package]
+name = "vislum-asset"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+crossbeam = { workspace = true }
+notify-debouncer-full = "0.5.0"
+derive_more = { workspace = true }
+thiserror = { workspace = true }
+atomicow = { workspace = true }

@@ -1,0 +1,53 @@
+scene MainScene;
+
+let shader: Program;
+let fb: Framebuffer;
+
+@attribute(min: 0.0, max: 1.0)
+let intensity: Float = 1.0;
+
+@attribute
+let color: Color = Color::new(1.0, 0.0, 0.0, 1.0);
+
+@initialize
+fn init() {
+    // Initialize the shader.
+    shader = Program.new(
+        vert: "assets/shaders/shader.wgsl",
+        frag: "assets/shaders/shader.wgsl",
+    );
+
+    // Initialize the framebuffer.
+    fb = Framebuffer.new(
+        width: width,
+        height: height,
+        clearColor: Color::new(0.0, 0.0, 0.0, 1.0),
+    );
+}
+
+fn blur(scope) {
+    save();
+    framebuffer.record();
+    scope()
+    load();
+
+    blurShader.use();
+    framebuffer.texture().use();
+    quad();
+}
+
+@render
+fn render() {
+    blur(fn () {
+        shader.setUniformFloat("time", time);
+        shader.setUniformFloat("width", width);
+        shader.setUniformFloat("height", height);
+        shader.use();
+
+        // Draw a quad.
+        quad();
+    })
+
+    // Restore the draw context.
+    load();
+}

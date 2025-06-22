@@ -1,0 +1,10 @@
+[package]
+name = "vislum-editor"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+eframe = { version = "0.31.1", features = ["wgpu"] }
+vislum-runtime = { path = "../vislum-runtime" }
+vislum-op = { path = "../vislum-op" }
+slotmap = { workspace = true }

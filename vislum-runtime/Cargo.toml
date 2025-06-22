@@ -1,0 +1,8 @@
+[package]
+name = "vislum-runtime"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vislum-asset = { path = "../vislum_asset" }
+vislum-op = { path = "../vislum-op"}

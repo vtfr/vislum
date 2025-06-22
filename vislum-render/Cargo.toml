@@ -1,0 +1,13 @@
+[package]
+name = "vislum-render"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wgpu = "26.0.1"
+winit = "0.30.12"
+slotmap = "1.0"
+derive_more = "1.0"
+cgmath = "0.18.0"
+atomicow = { workspace = true }
+crossbeam = { workspace = true }
