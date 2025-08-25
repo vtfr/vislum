@@ -1,11 +1,12 @@
-use std::marker::PhantomData;
 
-use slotmap::{SecondaryMap, SlotMap};
+use serde::{Deserialize, Serialize};
+use slotmap::SlotMap;
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::{
     ErasedSlot, InputIndex, Inputs, InputsMut, Operator, OutputIndex, Outputs, Placement,
-    SValueTypeInfo, SlotError, TaggedValue, ValueTypeId,
+    SlotError, TaggedValue, ValueTypeId,
 };
 
 /// Represents a connection to an output of a given node.
@@ -28,14 +29,34 @@ slotmap::new_key_type! {
     pub struct NodeId;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExportableUUID(Uuid);
+
+impl ExportableUUID {
+    /// Creates a new stable node ID.
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl std::fmt::Display for ExportableUUID {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// A node in the graph.
 pub struct Node {
     pub operator: Box<dyn Operator>,
+    pub exportable_uuid: ExportableUUID,
 }
 
 impl Node {
     pub fn new(operator: Box<dyn Operator>) -> Self {
-        Self { operator }
+        Self {
+            operator,
+            exportable_uuid: ExportableUUID::new(),
+        }
     }
 
     pub fn inputs(&self) -> Inputs {

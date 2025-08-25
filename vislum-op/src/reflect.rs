@@ -51,6 +51,8 @@ pub enum Placement {
     At(SlotIndex),
     /// Place the slot after the given slot index.
     After(SlotIndex),
+    /// Place the slot at the end of the input.
+    End,
 }
 
 impl Placement {
@@ -63,6 +65,7 @@ impl std::fmt::Display for Placement {
         match self {
             Placement::At(index) => write!(f, "At({})", index),
             Placement::After(index) => write!(f, "After({})", index),
+            Placement::End => write!(f, "End"),
         }
     }
 }

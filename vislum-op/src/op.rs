@@ -101,6 +101,12 @@ pub struct OperatorTypeInfo {
     pub construct: fn() -> Box<dyn Operator>,
 }
 
+impl OperatorTypeInfo {
+    pub fn construct(&self) -> Box<dyn Operator> {
+        (self.construct)()
+    }
+}
+
 /// A registry of operator types.
 ///
 /// This registry is used to register operator types, so they
@@ -122,5 +128,9 @@ impl OperatorTypeRegistry {
 
     pub fn iter(&self) -> impl Iterator<Item = &OperatorTypeInfo> {
         self.registry.values()
+    }
+
+    pub fn get(&self, id: OperatorTypeId<'static>) -> Option<&OperatorTypeInfo> {
+        self.registry.get(&id)
     }
 }

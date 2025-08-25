@@ -9,3 +9,5 @@ atomicow = { workspace = true }
 serde = { workspace = true }
 slotmap = { version = "1.0", features = ["serde"] }
 vislum-op-macros = { path = "macros" }
+serde_json = { workspace = true }
+uuid = { workspace = true }

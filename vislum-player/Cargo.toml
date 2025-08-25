@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 vislum-asset = { path = "../vislum_asset" }
 vislum-op = { path = "../vislum-op" }
+serde_json = { workspace = true }
+serde = { workspace = true }

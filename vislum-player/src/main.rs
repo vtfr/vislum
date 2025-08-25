@@ -1,8 +1,7 @@
 use std::ops::DerefMut;
 
 use vislum_op::{
-    ConstructOperator, ErasedSlot, EvaluationSystems, Evaluator, Graph, InputSlots, Multi,
-    NodeConnection, NodeId, Operator, Output, Placement, Reflect, Single, TaggedValue,
+    ConstructOperator, ErasedSlot, EvaluationSystems, Evaluator, Graph, GraphExporter, InputSlots, Multi, NodeConnection, NodeId, Operator, Output, Placement, Reflect, Single, TaggedValue
 };
 
 #[derive(Reflect)]
@@ -78,8 +77,12 @@ fn main() {
         ],
     );
 
-    let evaluator = Evaluator::new(&mut graph, EvaluationSystems::new());
-    dbg!(evaluator.get_node_output(node_id1, 0));
+    let graph_data = GraphExporter::new(&graph).export();
+    let graph_data_json = serde_json::to_string(&graph_data).unwrap();
+    println!("{}", graph_data_json);
+
+    // let evaluator = Evaluator::new(&mut graph, EvaluationSystems::new());
+    // dbg!(evaluator.get_node_output(node_id1, 0));
 }
 
 fn quickly_wire(
