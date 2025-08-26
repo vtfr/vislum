@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    ErasedSlot, ExportableUUID, Graph, GraphError, InputIndex, InputSlots, NodeConnection, NodeId, Operator, OperatorTypeId, OperatorTypeRegistry, OutputIndex, Placement, TaggedValue
+    ErasedSlot, ExportableUUID, Graph, GraphError, InputIndex, InputSlots, NodeConnection, NodeId, Operator, OperatorTypeId, OperatorTypeRegistry, OutputIndex, Placement, TaggedValue, ValueType
 };
 
 #[derive(Serialize, Deserialize)]
@@ -46,32 +46,18 @@ pub enum GraphImportError {
     GraphError(#[from] GraphError),
 }
 
-/// A table mapping operator types to input names to input indices.
-#[derive(Default)]
-struct NodeInputMappingTable {
-    mapping: HashMap<OperatorTypeId<'static>, Rc<HashMap<String, InputIndex>>>,
-}
-
-impl NodeInputMappingTable {
-    pub fn get_or_compute(
-        &mut self,
-        operator: &Box<dyn Operator>,
-    ) -> Rc<HashMap<String, InputIndex>> {
-        let operator_type_id = operator.type_id();
-
-        self.mapping
-            .entry(operator_type_id.into_owned())
-            .or_insert_with(|| {
-                let table = operator
-                    .inputs()
-                    .enumerate()
-                    .map(|(index, input)| (input.info().name.to_string(), index))
-                    .collect();
-
-                Rc::new(table)
-            })
-            .clone()
-    }
+enum WiringSpecification {
+    Connection {
+        from_node_id: ExportableUUID,
+        from_output_index: OutputIndex,
+        to_node_id: ExportableUUID,
+        to_input_index: InputIndex,
+    },
+    Constant {
+        stable_node_id: ExportableUUID,
+        input_index: InputIndex,
+        value: TaggedValue,
+    },
 }
 
 pub struct GraphImporter<'a> {
@@ -84,11 +70,11 @@ pub struct GraphImporter<'a> {
     /// The graph to import to.
     graph: Graph,
 
-    /// A table mapping operator types to input names to input indices.
-    node_input_mapping_table: NodeInputMappingTable,
-
     /// A table mapping stable node ids to node ids.
     node_stable_id_mapping: HashMap<ExportableUUID, NodeId>,
+
+    /// A table mapping operator types to input names to input indices.
+    wiring_specification: Vec<WiringSpecification>,
 }
 
 impl<'a> GraphImporter<'a> {
@@ -97,143 +83,82 @@ impl<'a> GraphImporter<'a> {
             registry,
             graph_data,
             graph: Graph::new(),
-            node_input_mapping_table: Default::default(),
             node_stable_id_mapping: Default::default(),
+            wiring_specification: Default::default(),
         }
     }
 
     pub fn import(mut self) -> Result<Graph, GraphImportError> {
+        let mut wiring_specifications: Vec<WiringSpecification> = Vec::new();
+
         // Phase 1: Import all nodes.
         for (stable_node_id, node_data) in self.graph_data.nodes.iter() {
-            self.import_node(*stable_node_id, node_data)?;
-        }
+            let operator_type = self
+                .registry
+                .get(node_data.operator_type_id.clone())
+                .ok_or_else(|| {
+                    GraphImportError::OperatorNotFound(node_data.operator_type_id.clone())
+                })?;
 
-        // Phase 2: Assign all inputs.
-        for (stable_node_id, node_data) in self.graph_data.nodes.iter() {
-            self.wire_node(*stable_node_id, node_data)?;
-        }
-
-        Ok(self.graph)
-    }
-
-    pub fn wire_node(
-        &mut self,
-        stable_node_id: ExportableUUID,
-        node_data: &NodeData,
-    ) -> Result<(), GraphImportError> {
-        // SAFETY: All nodes were added to the mapping table in the previous phase.
-        let node_id = self
-            .node_stable_id_mapping
-            .get(&stable_node_id)
-            .copied()
-            .unwrap();
-
-        // SAFETY: All nodes were added to the graph in the previous phase.
-        let node = self.graph.get_node_mut(node_id).unwrap();
-
-        // Get the input mapping table for the operator.
-        let input_mapping_table = self.node_input_mapping_table.get_or_compute(&node.operator);
-
-        // This can be drastically simplified by separating wiring information 
-        // from materialization itself.
-        //
-        // Phase 1: Creates nodes with no values and the WiringSpecification
-        // Phase 2: Applies the WiringSpecification to the all nodes by following
-        struct MaterializedInput {
-            input_index: InputIndex,
-            data: Vec<ErasedSlot>,
-        }
-
-        let mut inputs_materialized: Vec<MaterializedInput> = Vec::new();
-        
-        // Materialize all inputs.
-        for (input_name, input_slot_datas) in node_data.inputs.iter() {
-            // Find the input index for the input name.
-            //
-            // Unknown inputs are ignored.
-            if let Some(input_index) = input_mapping_table.get(input_name) {
-                let mut input_materialized = MaterializedInput {
-                    input_index: *input_index,
-                    data: Vec::new(),
+            let operator = operator_type.construct();
+            
+            // Generate wiring specifications for all inputs.
+            for (input_name, input_slot_datas) in node_data.inputs.iter() {
+                let Some((input_index, input_specification)) = operator_type.get_input_specification(input_name) else {
+                    continue;
                 };
 
-                for input_slot_data in input_slot_datas.iter() {
-                    match input_slot_data {
+                for slot in input_slot_datas.iter() {
+                    match slot {
                         InputSlotData::Constant(value) => {
-                            let value = node.operator.get_input(*input_index)
-                                .unwrap()
-                                .type_info()
-                                .serialization
+                            // Deserialize the value.
+                            let value = input_specification.value_type.serialization
                                 .as_ref()
                                 .unwrap()
                                 .deserialize(value.clone())
                                 .unwrap();
 
-                            input_materialized.data.push(ErasedSlot::Constant(value));
+                            wiring_specifications.push(WiringSpecification::Constant {
+                                stable_node_id: *stable_node_id,
+                                input_index: input_index,
+                                value: value,
+                            });
                         }
-                        InputSlotData::Connection(NodeConnectionData {
-                            node_id: from_node_stable_id,
-                            output_index,
-                        }) => {
-                            let from_node_id = self
-                                .node_stable_id_mapping
-                                .get(from_node_stable_id)
-                                .copied()
-                                .unwrap();
-
-                            input_materialized.data.push(ErasedSlot::Connection(NodeConnection {
-                                node_id: from_node_id,
-                                output_index: *output_index,
-                            }));
+                        InputSlotData::Connection(node_connection) => {
+                            wiring_specifications.push(WiringSpecification::Connection {
+                                from_node_id: node_connection.node_id,
+                                from_output_index: node_connection.output_index,
+                                to_node_id: *stable_node_id,
+                                to_input_index: input_index,
+                            });
                         }
                     }
                 }
-
-                inputs_materialized.push(input_materialized);
             }
+
+            let node_id = self.graph.add_node(operator);
+
+            self.node_stable_id_mapping.insert(*stable_node_id, node_id);
         }
 
-        // Wire all inputs.
-        for MaterializedInput { input_index, data: slots } in inputs_materialized {
-            for slot in slots {
-                match slot {
-                    ErasedSlot::Constant(tagged_value) => {
-                        self.graph.assign_constant(node_id, input_index, Placement::End, tagged_value)?;
-                    }
-                    ErasedSlot::Connection(node_connection) => {
-                        self.graph.connect(
-                            node_connection.node_id,
-                            node_connection.output_index,
-                            node_id,
-                            input_index,
-                            Placement::End,
-                        )?;
-                    }
-                    ErasedSlot::Dangling => unreachable!(),
+        // Phase 2: Wire all nodes.
+        for wiring_specification in wiring_specifications {
+            match wiring_specification {
+                WiringSpecification::Connection { from_node_id, from_output_index, to_node_id, to_input_index } => {
+                    let from_node_id = self.node_stable_id_mapping.get(&from_node_id).copied().unwrap();
+                    let to_node_id = self.node_stable_id_mapping.get(&to_node_id).copied().unwrap();
+
+                    self.graph.connect(from_node_id, from_output_index, to_node_id, to_input_index, Placement::End)?;
+                }
+                WiringSpecification::Constant { stable_node_id, input_index, value } => {
+                    let node_id = self.node_stable_id_mapping.get(&stable_node_id).copied().unwrap();
+
+                    self.graph.assign_constant(node_id, input_index, Placement::End, value)?;
                 }
             }
         }
 
-        Ok(())
-    }
-
-    pub fn import_node(
-        &mut self,
-        stable_node_id: ExportableUUID,
-        node_data: &NodeData,
-    ) -> Result<(), GraphImportError> {
-        let operator_type_info = self
-            .registry
-            .get(node_data.operator_type_id.clone())
-            .ok_or_else(|| {
-                GraphImportError::OperatorNotFound(node_data.operator_type_id.clone())
-            })?;
-
-        let operator = operator_type_info.construct();
-        let node_id = self.graph.add_node(operator);
-
-        self.node_stable_id_mapping.insert(stable_node_id, node_id);
-        Ok(())
+        Ok(self.graph)
     }
 }
 

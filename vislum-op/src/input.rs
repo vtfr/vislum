@@ -34,6 +34,8 @@ impl Default for InputInfo {
 /// Used by the [`Operator`] trait to construct runtime
 /// information on an input.
 pub trait ConstructInput {
+    fn type_info() -> SValueTypeInfo;
+
     /// Constructs a parameter with the provided info.
     fn construct_input(info: InputInfo) -> Self
     where
@@ -114,6 +116,10 @@ impl<T> ConstructInput for Single<T>
 where
     T: Value,
 {
+    fn type_info() -> SValueTypeInfo {
+        &T::INFO
+    }
+
     fn construct_input(info: InputInfo) -> Self
     where
         Self: Sized,
@@ -233,6 +239,10 @@ impl<T> ConstructInput for Multi<T>
 where
     T: Value,
 {
+    fn type_info() -> SValueTypeInfo {
+        &T::INFO
+    }
+
     fn construct_input(info: InputInfo) -> Self {
         Self {
             info,

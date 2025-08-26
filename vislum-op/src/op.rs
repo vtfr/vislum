@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use atomicow::CowArc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{EvalError, EvaluateContext, Inputs, Outputs, Reflect, SValueTypeInfo};
+use crate::{EvalError, EvaluateContext, InputIndex, Inputs, Outputs, Reflect, SValueTypeInfo, ValueType};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OperatorTypeId<'a>(CowArc<'a, str>);
@@ -95,13 +95,29 @@ pub trait RegisterOperator {
     }
 }
 
+/// A specification of an input to an operator.
+pub struct InputSpecification {
+    pub name: Cow<'static, str>,
+    pub value_type: &'static ValueType,
+}
+
 /// Information about an operator type.
-pub struct OperatorTypeInfo {
+pub struct OperatorType {
     pub id: OperatorTypeId<'static>,
+    pub inputs: Vec<InputSpecification>,
     pub construct: fn() -> Box<dyn Operator>,
 }
 
-impl OperatorTypeInfo {
+impl OperatorType {
+    /// Gets the input specification for an input.
+    pub fn get_input_specification(&self, name: &str) -> Option<(InputIndex, &InputSpecification)> {
+        self.inputs.iter()
+            .enumerate()
+            .find_map(|(index, input)| {
+                (input.name == name).then(|| (index, input))
+            })
+    }
+
     pub fn construct(&self) -> Box<dyn Operator> {
         (self.construct)()
     }
@@ -114,11 +130,11 @@ impl OperatorTypeInfo {
 /// through the editor.
 #[derive(Default)]
 pub struct OperatorTypeRegistry {
-    registry: HashMap<OperatorTypeId<'static>, OperatorTypeInfo>,
+    registry: HashMap<OperatorTypeId<'static>, OperatorType>,
 }
 
 impl OperatorTypeRegistry {
-    pub fn add(&mut self, info: OperatorTypeInfo) {
+    pub fn add(&mut self, info: OperatorType) {
         self.registry.insert(info.id.into_owned(), info);
     }
 
@@ -126,11 +142,11 @@ impl OperatorTypeRegistry {
         T::register_operator(self);
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &OperatorTypeInfo> {
+    pub fn iter(&self) -> impl Iterator<Item = &OperatorType> {
         self.registry.values()
     }
 
-    pub fn get(&self, id: OperatorTypeId<'static>) -> Option<&OperatorTypeInfo> {
+    pub fn get(&self, id: OperatorTypeId<'static>) -> Option<&OperatorType> {
         self.registry.get(&id)
     }
 }
