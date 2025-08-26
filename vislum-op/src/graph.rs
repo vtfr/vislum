@@ -1,4 +1,3 @@
-
 use serde::{Deserialize, Serialize};
 use slotmap::SlotMap;
 use thiserror::Error;

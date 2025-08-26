@@ -2909,6 +2909,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "smallbox"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aca054fd9f8c2ebe8557a2433f307e038c0716124efd045daa0388afa5172189"
+
+[[package]]
 name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3307,9 +3313,11 @@ dependencies = [
  "serde",
  "serde_json",
  "slotmap",
+ "smallbox",
  "thiserror 2.0.12",
  "uuid",
  "vislum-op-macros",
+ "vislum-system",
 ]
 
 [[package]]
@@ -3350,6 +3358,22 @@ version = "0.1.0"
 dependencies = [
  "vislum-asset",
  "vislum-op",
+]
+
+[[package]]
+name = "vislum-system"
+version = "0.1.0"
+dependencies = [
+ "vislum-system-macros",
+]
+
+[[package]]
+name = "vislum-system-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

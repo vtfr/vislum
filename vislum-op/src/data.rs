@@ -1,12 +1,10 @@
 use std::{collections::HashMap, rc::Rc};
 
-use serde::{
-    Deserialize, Serialize,
-};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    ErasedSlot, ExportableUUID, Graph, GraphError, InputIndex, InputSlots, NodeId, Operator, OperatorTypeId, OperatorTypeRegistry, OutputIndex, Placement
+    ErasedSlot, ExportableUUID, Graph, GraphError, InputIndex, InputSlots, NodeConnection, NodeId, Operator, OperatorTypeId, OperatorTypeRegistry, OutputIndex, Placement, TaggedValue
 };
 
 #[derive(Serialize, Deserialize)]
@@ -55,7 +53,10 @@ struct NodeInputMappingTable {
 }
 
 impl NodeInputMappingTable {
-    pub fn get_or_compute(&mut self, operator: &Box<dyn Operator>) -> Rc<HashMap<String, InputIndex>> {
+    pub fn get_or_compute(
+        &mut self,
+        operator: &Box<dyn Operator>,
+    ) -> Rc<HashMap<String, InputIndex>> {
         let operator_type_id = operator.type_id();
 
         self.mapping
@@ -109,13 +110,13 @@ impl<'a> GraphImporter<'a> {
 
         // Phase 2: Assign all inputs.
         for (stable_node_id, node_data) in self.graph_data.nodes.iter() {
-            self.import_node_inputs(*stable_node_id, node_data)?;
+            self.wire_node(*stable_node_id, node_data)?;
         }
 
         Ok(self.graph)
     }
 
-    pub fn import_node_inputs(
+    pub fn wire_node(
         &mut self,
         stable_node_id: ExportableUUID,
         node_data: &NodeData,
@@ -128,44 +129,87 @@ impl<'a> GraphImporter<'a> {
             .unwrap();
 
         // SAFETY: All nodes were added to the graph in the previous phase.
-        let node = self.graph
-            .get_node(node_id)
-            .unwrap();
+        let node = self.graph.get_node_mut(node_id).unwrap();
 
         // Get the input mapping table for the operator.
         let input_mapping_table = self.node_input_mapping_table.get_or_compute(&node.operator);
 
-        // Assign all inputs.
+        // This can be drastically simplified by separating wiring information 
+        // from materialization itself.
+        //
+        // Phase 1: Creates nodes with no values and the WiringSpecification
+        // Phase 2: Applies the WiringSpecification to the all nodes by following
+        struct MaterializedInput {
+            input_index: InputIndex,
+            data: Vec<ErasedSlot>,
+        }
+
+        let mut inputs_materialized: Vec<MaterializedInput> = Vec::new();
+        
+        // Materialize all inputs.
         for (input_name, input_slot_datas) in node_data.inputs.iter() {
             // Find the input index for the input name.
             //
             // Unknown inputs are ignored.
             if let Some(input_index) = input_mapping_table.get(input_name) {
+                let mut input_materialized = MaterializedInput {
+                    input_index: *input_index,
+                    data: Vec::new(),
+                };
+
                 for input_slot_data in input_slot_datas.iter() {
                     match input_slot_data {
                         InputSlotData::Constant(value) => {
-                            todo!()
+                            let value = node.operator.get_input(*input_index)
+                                .unwrap()
+                                .type_info()
+                                .serialization
+                                .as_ref()
+                                .unwrap()
+                                .deserialize(value.clone())
+                                .unwrap();
+
+                            input_materialized.data.push(ErasedSlot::Constant(value));
                         }
                         InputSlotData::Connection(NodeConnectionData {
                             node_id: from_node_stable_id,
                             output_index,
                         }) => {
-                            let from_node_id =
-                                self.node_stable_id_mapping
-                                    .get(from_node_stable_id)
-                                    .copied()
-                                    .ok_or_else(|| GraphImportError::NodeNotFound(*from_node_stable_id))?;
+                            let from_node_id = self
+                                .node_stable_id_mapping
+                                .get(from_node_stable_id)
+                                .copied()
+                                .unwrap();
 
-                            // Perform the connection.
-                            self.graph.connect(
-                                from_node_id,
-                                *output_index,
-                                node_id,
-                                *input_index,
-                                Placement::End,
-                            )?;
+                            input_materialized.data.push(ErasedSlot::Connection(NodeConnection {
+                                node_id: from_node_id,
+                                output_index: *output_index,
+                            }));
                         }
-                    };
+                    }
+                }
+
+                inputs_materialized.push(input_materialized);
+            }
+        }
+
+        // Wire all inputs.
+        for MaterializedInput { input_index, data: slots } in inputs_materialized {
+            for slot in slots {
+                match slot {
+                    ErasedSlot::Constant(tagged_value) => {
+                        self.graph.assign_constant(node_id, input_index, Placement::End, tagged_value)?;
+                    }
+                    ErasedSlot::Connection(node_connection) => {
+                        self.graph.connect(
+                            node_connection.node_id,
+                            node_connection.output_index,
+                            node_id,
+                            input_index,
+                            Placement::End,
+                        )?;
+                    }
+                    ErasedSlot::Dangling => unreachable!(),
                 }
             }
         }
@@ -210,27 +254,37 @@ impl<'a> GraphExporter<'a> {
     }
 
     pub fn export(&self) -> GraphData {
-        let mut nodes: HashMap<ExportableUUID, NodeData> = HashMap::with_capacity(self.graph.nodes.len());
+        let mut nodes: HashMap<ExportableUUID, NodeData> =
+            HashMap::with_capacity(self.graph.nodes.len());
 
         // Warm-up the node cache.
-        let node_exportable_uuid_mapping = self.graph.iter()
-            .map(|(node_id, node)| {
-                (node_id, node.exportable_uuid)
-            })
+        let node_exportable_uuid_mapping = self
+            .graph
+            .iter()
+            .map(|(node_id, node)| (node_id, node.exportable_uuid))
             .collect::<HashMap<_, _>>();
 
         // Write all the nodes.
         for (node_id, node) in self.graph.iter() {
-            let mut input_datas: HashMap<String, Vec<InputSlotData>> = HashMap::with_capacity(node.operator.num_inputs());
+            let mut input_datas: HashMap<String, Vec<InputSlotData>> =
+                HashMap::with_capacity(node.operator.num_inputs());
 
             // Write all the inputs.
             for input in node.operator.inputs() {
-                let mut input_slot_datas: Vec<InputSlotData> = Vec::with_capacity(input.num_slots());
+                let mut input_slot_datas: Vec<InputSlotData> =
+                    Vec::with_capacity(input.num_slots());
 
                 for slot in InputSlots::new(input) {
                     let slot_data = match slot {
-                        ErasedSlot::Constant(_tagged_value) => {
-                            InputSlotData::Constant(serde_json::Value::Null)
+                        ErasedSlot::Constant(ref tagged_value) => {
+                            if let Some(value) = tagged_value.type_info().serialization.as_ref() {
+                                match value.serialize(tagged_value.clone()) {
+                                    Ok(data) => InputSlotData::Constant(data),
+                                    Err(_) => continue,
+                                }
+                            } else {
+                                continue;
+                            }
                         }
                         ErasedSlot::Connection(node_connection) => {
                             InputSlotData::Connection(NodeConnectionData {
@@ -246,9 +300,7 @@ impl<'a> GraphExporter<'a> {
                     input_slot_datas.push(slot_data);
                 }
 
-                let input_name = input.info()
-                    .name
-                    .to_string();
+                let input_name = input.info().name.to_string();
 
                 input_datas.insert(input_name, input_slot_datas);
             }
@@ -263,8 +315,6 @@ impl<'a> GraphExporter<'a> {
             nodes.insert(node_exportable_uuid_mapping[&node_id], node_data);
         }
 
-        GraphData {
-            nodes,
-        }
+        GraphData { nodes }
     }
 }

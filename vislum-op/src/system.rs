@@ -1,6 +1,8 @@
+use vislum_system::System;
+
 use crate::{Graph, OperatorTypeRegistry, RegisterOperator, ValueTypeRegistry};
 
-#[derive(Default)]
+#[derive(Default, System)]
 pub struct OperatorSystem {
     operator_type_registry: OperatorTypeRegistry,
     value_type_registry: ValueTypeRegistry,
