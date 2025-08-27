@@ -256,14 +256,17 @@ pub fn derive_reflect_impl(input: DeriveInput) -> syn::Result<TokenStream> {
     let input_len = inputs.len();
     let input_idents = inputs.iter().map(|input| input.ident).collect::<Vec<_>>();
     let input_indexes = (0..input_len).collect::<Vec<_>>();
-    
+
     let input_specifications = inputs.iter().map(|input| {
-        let name: String = input.attrs.name.clone()
+        let name: String = input
+            .attrs
+            .name
+            .clone()
             .map(|name| name.value())
             .unwrap_or_else(|| input.ident.to_string().into());
 
         let ty = input.ty;
-        
+
         quote! {
             vislum_op::InputSpecification {
                 name: #name.into(),

@@ -1,7 +1,6 @@
-use std::ops::DerefMut;
-
 use vislum_op::{
-    ConstructOperator, ErasedSlot, EvaluationSystems, Evaluator, Graph, GraphData, GraphExporter, GraphImporter, InputSlots, Multi, NodeConnection, NodeId, Operator, Output, Placement, Reflect, Single, TaggedValue
+    ConstructOperator, ErasedSlot, Graph, GraphExporter, Multi, NodeConnection, NodeId, Operator,
+    Output, Placement, Reflect, TaggedValue,
 };
 
 #[derive(Reflect)]
@@ -79,7 +78,7 @@ fn main() {
 
     let graph_data = GraphExporter::new(&graph).export();
     let graph_data_json = serde_json::to_string(&graph_data).unwrap();
-    
+
     println!("{}", &graph_data_json);
 
     // let data = serde_json::from_str::<GraphData>(&graph_data_json).unwrap(); let graph = GraphImporter::new(&registry, &data).import().unwrap();

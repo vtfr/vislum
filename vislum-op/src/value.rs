@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use smallbox::space::S2;
 use smallbox::SmallBox;
+use smallbox::space::S2;
 use thiserror::Error;
 
 /// Re-export the `Value` macro from the `vislum-graph-macros` crate.
@@ -100,9 +100,7 @@ impl Variant {
 
 impl Debug for Variant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Variant")
-            .field("name", &self.name)
-            .finish()
+        f.debug_struct("Variant").field("name", &self.name).finish()
     }
 }
 
@@ -117,7 +115,9 @@ impl ValueTypeSerializationInfo {
     where
         T: serde::Serialize + serde::de::DeserializeOwned + Value,
     {
-        fn serialize_impl<T>(value: TaggedValue) -> Result<serde_json::Value, IncompatibleValueTypeError>
+        fn serialize_impl<T>(
+            value: TaggedValue,
+        ) -> Result<serde_json::Value, IncompatibleValueTypeError>
         where
             T: serde::Serialize + TryFrom<TaggedValue, Error = IncompatibleValueTypeError>,
         {
@@ -128,7 +128,9 @@ impl ValueTypeSerializationInfo {
             }
         }
 
-        fn deserialize_impl<T>(value: serde_json::Value) -> Result<TaggedValue, IncompatibleValueTypeError>
+        fn deserialize_impl<T>(
+            value: serde_json::Value,
+        ) -> Result<TaggedValue, IncompatibleValueTypeError>
         where
             T: serde::de::DeserializeOwned + Into<TaggedValue>,
         {
@@ -145,12 +147,18 @@ impl ValueTypeSerializationInfo {
     }
 
     #[inline(always)]
-    pub fn serialize(&self, value: TaggedValue) -> Result<serde_json::Value, IncompatibleValueTypeError> {
+    pub fn serialize(
+        &self,
+        value: TaggedValue,
+    ) -> Result<serde_json::Value, IncompatibleValueTypeError> {
         (self.serialize)(value)
     }
 
     #[inline(always)]
-    pub fn deserialize(&self, value: serde_json::Value) -> Result<TaggedValue, IncompatibleValueTypeError> {
+    pub fn deserialize(
+        &self,
+        value: serde_json::Value,
+    ) -> Result<TaggedValue, IncompatibleValueTypeError> {
         (self.deserialize)(value)
     }
 }

@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
 use quote::quote;
+use syn::{DeriveInput, parse_macro_input};
 
 #[proc_macro_derive(System)]
 pub fn system_derive(input: TokenStream) -> TokenStream {
@@ -9,7 +9,7 @@ pub fn system_derive(input: TokenStream) -> TokenStream {
     let struct_name = input.ident;
 
     TokenStream::from(quote! {
-        impl vislum_system::System for #struct_name 
+        impl vislum_system::System for #struct_name
         where
             #struct_name: std::any::Any + 'static,
         {

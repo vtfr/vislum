@@ -4,7 +4,9 @@ use atomicow::CowArc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{EvalError, EvaluateContext, InputIndex, Inputs, Outputs, Reflect, SValueTypeInfo, ValueType};
+use crate::{
+    EvalError, EvaluateContext, InputIndex, Inputs, Outputs, Reflect, SValueTypeInfo, ValueType,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OperatorTypeId<'a>(CowArc<'a, str>);
@@ -111,11 +113,10 @@ pub struct OperatorType {
 impl OperatorType {
     /// Gets the input specification for an input.
     pub fn get_input_specification(&self, name: &str) -> Option<(InputIndex, &InputSpecification)> {
-        self.inputs.iter()
+        self.inputs
+            .iter()
             .enumerate()
-            .find_map(|(index, input)| {
-                (input.name == name).then(|| (index, input))
-            })
+            .find_map(|(index, input)| (input.name == name).then(|| (index, input)))
     }
 
     pub fn construct(&self) -> Box<dyn Operator> {

@@ -1,8 +1,8 @@
 extern crate self as vislum_system;
 
-use std::collections::HashMap;
-use std::cell::{Ref, RefCell, RefMut};
 use std::any::{Any, TypeId};
+use std::cell::{Ref, RefCell, RefMut};
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 // Re-export the System macro.
@@ -12,10 +12,10 @@ pub use vislum_system_macros::System;
 pub trait System {
     /// Returns a reference to the system
     fn as_any(&self) -> &dyn Any;
-    
+
     /// Returns a mutable reference to the system
     fn as_any_mut(&mut self) -> &mut dyn Any;
-    
+
     /// Returns the type name of the system
     fn type_name(&self) -> &str;
 }
@@ -59,21 +59,21 @@ impl Debug for ErasedSystemCell {
 impl ErasedSystemCell {
     /// Creates a new shared system cell.
     #[inline]
-    pub fn new<T>(system: T) -> Self 
-    where 
-        T: System + 'static
+    pub fn new<T>(system: T) -> Self
+    where
+        T: System + 'static,
     {
         Self(Box::new(RefCell::new(system)))
     }
 
     /// Get a reference to a system.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// Assumes that the caller has checked that the system is of the correct type.
     #[inline]
-    pub fn get_downcasted_ref<T>(&self) -> SysRef<T> 
-    where 
+    pub fn get_downcasted_ref<T>(&self) -> SysRef<T>
+    where
         T: System + 'static,
     {
         let system = match self.0.try_borrow() {
@@ -81,24 +81,22 @@ impl ErasedSystemCell {
             Err(_) => system_already_borrowed(std::any::type_name::<T>()),
         };
 
-        let system = Ref::map(system, |s| {
-            match s.as_any().downcast_ref::<T>() {
-                Some(system) => system,
-                None => incompatible_system_downcast(std::any::type_name::<T>()),
-            }
+        let system = Ref::map(system, |s| match s.as_any().downcast_ref::<T>() {
+            Some(system) => system,
+            None => incompatible_system_downcast(std::any::type_name::<T>()),
         });
 
         SysRef(system)
     }
 
     /// Gets a mutable reference to a system.
-    /// 
+    ///
     /// # Safety
-    /// 
+    ///
     /// Assumes that the caller has checked that the system is of the correct type.
     #[inline]
-    pub fn get_downcasted_mut<T>(&self) -> SysMut<T> 
-    where 
+    pub fn get_downcasted_mut<T>(&self) -> SysMut<T>
+    where
         T: System + 'static,
     {
         let system = match self.0.try_borrow_mut() {
@@ -106,11 +104,9 @@ impl ErasedSystemCell {
             Err(_) => system_already_borrowed(std::any::type_name::<T>()),
         };
 
-        let system = RefMut::map(system, |s| {
-            match s.as_any_mut().downcast_mut::<T>() {
-                Some(system) => system,
-                None => incompatible_system_downcast(std::any::type_name::<T>()),
-            }
+        let system = RefMut::map(system, |s| match s.as_any_mut().downcast_mut::<T>() {
+            Some(system) => system,
+            None => incompatible_system_downcast(std::any::type_name::<T>()),
         });
 
         SysMut(system)
@@ -130,8 +126,8 @@ impl Systems {
     }
 
     /// Gets a system by type.
-    pub fn get<T>(&self) -> Option<SysRef<T>> 
-    where 
+    pub fn get<T>(&self) -> Option<SysRef<T>>
+    where
         T: System + 'static,
     {
         let system = self.systems.get(&std::any::TypeId::of::<T>())?;
@@ -139,8 +135,8 @@ impl Systems {
     }
 
     /// Gets a mutable system by type.
-    pub fn get_mut<T>(&self) -> Option<SysMut<T>> 
-    where 
+    pub fn get_mut<T>(&self) -> Option<SysMut<T>>
+    where
         T: System + 'static,
     {
         let system = self.systems.get(&TypeId::of::<T>())?;
@@ -149,7 +145,7 @@ impl Systems {
 
     /// Gets a system by type, panicking if the system is not found.
     pub fn must_get<T>(&self) -> SysRef<T>
-    where 
+    where
         T: System + 'static,
     {
         match self.get::<T>() {
@@ -160,7 +156,7 @@ impl Systems {
 
     /// Gets a mutable system by type, panicking if the system is not found.
     pub fn must_get_mut<T>(&self) -> SysMut<T>
-    where 
+    where
         T: System + 'static,
     {
         match self.get_mut::<T>() {
@@ -170,16 +166,17 @@ impl Systems {
     }
 
     /// Inserts a system.
-    pub fn insert<T>(&mut self, system: T) 
-    where 
+    pub fn insert<T>(&mut self, system: T)
+    where
         T: System + 'static,
     {
-        self.systems.insert(TypeId::of::<T>(), ErasedSystemCell::new(system));
+        self.systems
+            .insert(TypeId::of::<T>(), ErasedSystemCell::new(system));
     }
 
     /// Inserts a default system.
     pub fn insert_default<T>(&mut self)
-    where 
+    where
         T: System + Default + 'static,
     {
         self.insert(T::default());

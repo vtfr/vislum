@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    ErasedSlot, ExportableUUID, Graph, GraphError, InputIndex, InputSlots, NodeConnection, NodeId, Operator, OperatorTypeId, OperatorTypeRegistry, OutputIndex, Placement, TaggedValue, ValueType
+    ErasedSlot, ExportableUUID, Graph, GraphError, InputIndex, InputSlots, NodeConnection, NodeId,
+    Operator, OperatorTypeId, OperatorTypeRegistry, OutputIndex, Placement, TaggedValue, ValueType,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -101,10 +102,12 @@ impl<'a> GraphImporter<'a> {
                 })?;
 
             let operator = operator_type.construct();
-            
+
             // Generate wiring specifications for all inputs.
             for (input_name, input_slot_datas) in node_data.inputs.iter() {
-                let Some((input_index, input_specification)) = operator_type.get_input_specification(input_name) else {
+                let Some((input_index, input_specification)) =
+                    operator_type.get_input_specification(input_name)
+                else {
                     continue;
                 };
 
@@ -112,7 +115,9 @@ impl<'a> GraphImporter<'a> {
                     match slot {
                         InputSlotData::Constant(value) => {
                             // Deserialize the value.
-                            let value = input_specification.value_type.serialization
+                            let value = input_specification
+                                .value_type
+                                .serialization
                                 .as_ref()
                                 .unwrap()
                                 .deserialize(value.clone())
@@ -144,16 +149,44 @@ impl<'a> GraphImporter<'a> {
         // Phase 2: Wire all nodes.
         for wiring_specification in wiring_specifications {
             match wiring_specification {
-                WiringSpecification::Connection { from_node_id, from_output_index, to_node_id, to_input_index } => {
-                    let from_node_id = self.node_stable_id_mapping.get(&from_node_id).copied().unwrap();
-                    let to_node_id = self.node_stable_id_mapping.get(&to_node_id).copied().unwrap();
+                WiringSpecification::Connection {
+                    from_node_id,
+                    from_output_index,
+                    to_node_id,
+                    to_input_index,
+                } => {
+                    let from_node_id = self
+                        .node_stable_id_mapping
+                        .get(&from_node_id)
+                        .copied()
+                        .unwrap();
+                    let to_node_id = self
+                        .node_stable_id_mapping
+                        .get(&to_node_id)
+                        .copied()
+                        .unwrap();
 
-                    self.graph.connect(from_node_id, from_output_index, to_node_id, to_input_index, Placement::End)?;
+                    self.graph.connect(
+                        from_node_id,
+                        from_output_index,
+                        to_node_id,
+                        to_input_index,
+                        Placement::End,
+                    )?;
                 }
-                WiringSpecification::Constant { stable_node_id, input_index, value } => {
-                    let node_id = self.node_stable_id_mapping.get(&stable_node_id).copied().unwrap();
+                WiringSpecification::Constant {
+                    stable_node_id,
+                    input_index,
+                    value,
+                } => {
+                    let node_id = self
+                        .node_stable_id_mapping
+                        .get(&stable_node_id)
+                        .copied()
+                        .unwrap();
 
-                    self.graph.assign_constant(node_id, input_index, Placement::End, value)?;
+                    self.graph
+                        .assign_constant(node_id, input_index, Placement::End, value)?;
                 }
             }
         }
