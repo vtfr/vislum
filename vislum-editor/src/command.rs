@@ -1,89 +1,85 @@
-use vislum_core::prelude::*;
+use std::cell::RefCell;
 
-pub trait Command {
-    fn apply(&self, engine: &mut Engine);
+use downcast_rs::{impl_downcast, Downcast};
 
-    fn undoable(&self) -> bool { false }
+use crate::editor::Editor;
 
-    fn undo(&self, engine: &mut Engine) { }
-}
+/// A command that can be applied to the editor.
+pub trait Command: Downcast {
+    /// Applies the command to the editor.
+    fn apply(&self, editor: &mut Editor);
 
-pub struct CreateNodeCommand {
-    pub node_type: NodeTypeId,
-    pub created_node_id: Option<NodeId>,
-}
-
-impl Command for CreateNodeCommand {
-    fn apply(&self, engine: &mut Engine) {
-        self.created_node_id = Some(engine.get_node_graph_system().create_node(self.node_type));
+    /// Whether the command can be merged with another command.
+    ///
+    /// Returns the unmerged previous command if the merge was not successful.
+    fn merge(&mut self, previous: Box<dyn Command>) -> Result<(), Box<dyn Command>> {
+        Err(previous)
     }
 
+    /// Whether the command can be undone.
     fn undoable(&self) -> bool {
-        true
+        false
+    }
+}
+
+impl_downcast!(Command);
+
+/// Helper function to merge two commands of the same type, or
+/// return the unmerged previous command if the merge was not successful.
+pub fn merge_same<T: Command>(
+    command: &mut T,
+    previous: Box<dyn Command>,
+    can_merge: impl FnOnce(&T, &T) -> bool,
+    merge: impl FnOnce(&mut T, T),
+) -> Result<(), Box<dyn Command>> {
+    let previous = previous.downcast::<T>()?;
+    
+    if !can_merge(command, &*previous) {
+        return Err(previous);
     }
 
-    fn undo(&self, engine: &mut Engine) {
-        if let Some(node_id) = self.created_node_id {
-            engine.get_node_graph_system().remove_node(node_id);
-        }
+    merge(command, *previous);
+    Ok(())
+}
+
+pub trait CommandDispatcher {
+    /// Dispatch a boxed dyn command.
+    fn dispatch_dyn(&self, command: Box<dyn Command>);
+}
+
+impl dyn CommandDispatcher {
+    /// Dispatch a command of type `T`.
+    #[inline]
+    fn dispatch<T>(&mut self, command: T) 
+    where 
+        T: Command 
+    {
+        self.dispatch_dyn(Box::new(command));
     }
 }
 
 #[derive(Default)]
 pub struct History {
-    undo_stack: Vec<Box<dyn Command>>,
-    redo_stack: Vec<Box<dyn Command>>,
-    queue: Vec<Box<dyn Command>>,
+    queue: RefCell<Vec<Box<dyn Command>>>,
 }
 
 impl History {
-    /// Pushes a command to the queue, to be applied at the end of the frame.
-    pub fn push(&mut self, command: Box<dyn Command>) {
-        self.queue.push(command);
+    /// Add a command to the history.
+    pub fn add(&self, command: Box<dyn Command>) {
+        self.queue.borrow_mut().push(command);
     }
+    
+    pub fn process_commands(&mut self, editor: &mut Editor) {
+        let mut queue = self.queue.borrow_mut();
 
-    /// Applies all commands in the queue to the engine.
-    pub fn apply(&mut self, engine: &mut Engine) {
-        // Clear the redo stack when applying a command, as these commands are no longer valid.
-        self.redo_stack.clear();
-
-        while let Some(command) = self.queue.pop() {
-            command.apply(engine);
-
-            if !command.undoable() {
-                // If the command is not undoable, clear the redo stack, as we can't undo it,
-                // so the redo stack is no longer valid.
-                self.redo_stack.clear();
-            } else {
-                // If the command is undoable, add it to the undo stack.
-                self.undo_stack.push(command);
-            }
+        while let Some(command) = queue.pop() {
+            command.apply(editor);
         }
     }
+}
 
-    /// Undoes the last command.
-    pub fn undo(&mut self, engine: &mut Engine) {
-        if let Some(command) = self.undo_stack.pop() {
-            command.undo(engine);
-            self.redo_stack.push(command);
-        }
-    }
-
-    /// Redoes the last command.
-    pub fn redo(&mut self, engine: &mut Engine) {
-        if let Some(command) = self.redo_stack.pop() {
-            command.apply(engine);
-            self.undo_stack.push(command);
-        }
-    }
-
-    /// Returns true if we can undo the last command.
-    pub fn can_undo(&self) -> bool {
-        !self.undo_stack.is_empty()
-    }
-
-    /// Returns true if we can redo the last command.
-    pub fn can_redo(&self) -> bool {
-        !self.redo_stack.is_empty()
+impl CommandDispatcher for History {
+    fn dispatch_dyn(&self, command: Box<dyn Command>) {
+        self.add(command);
     }
 }

@@ -1,5 +1,6 @@
 extern crate self as vislum_op;
 
+pub mod animation;
 pub mod data;
 pub mod eval;
 pub mod graph;
@@ -10,6 +11,7 @@ pub mod reflect;
 pub mod system;
 pub mod value;
 
+pub use animation::*;
 pub use data::*;
 pub use eval::*;
 pub use graph::*;

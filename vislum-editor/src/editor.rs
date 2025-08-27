@@ -2,11 +2,12 @@ use eframe::egui;
 use vislum_op::ConstructOperator;
 use vislum_runtime::Runtime;
 
-use crate::graph::{GraphView, GraphViewContext};
+use crate::{command::History, graph::{GraphView, GraphViewContext}};
 
 pub struct Editor {
-    graph_view: GraphView,
-    runtime: Runtime,
+    pub graph_view: GraphView,
+    pub runtime: Runtime,
+    pub history: History,
 }
 
 impl Editor {
@@ -14,15 +15,16 @@ impl Editor {
         let mut runtime = Runtime::new();
         runtime
             .get_operator_system_mut()
-            .register_operator_type::<vislum_op::Add>();
+            .register_operator_type::<vislum_op_std::Std>();
         runtime
             .get_operator_system_mut()
             .get_graph_mut()
-            .add_node(<vislum_op::Add as ConstructOperator>::construct_operator());
+            .add_node(<vislum_op_std::math::AddFloats as ConstructOperator>::construct_operator());
 
         Self {
             runtime,
             graph_view: Default::default(),
+            history: Default::default(),
         }
     }
 
@@ -43,6 +45,17 @@ impl Editor {
         )
         .unwrap();
     }
+
+    fn process_commands(&mut self) {
+        // Takes the history out of the editor, so that it can be processed.
+        let mut history = std::mem::take(&mut self.history);
+
+        // Processes the commands.
+        history.process_commands(self);
+
+        // Puts the history back into the editor.
+        self.history = history;
+    }
 }
 
 impl eframe::App for Editor {
@@ -54,8 +67,11 @@ impl eframe::App for Editor {
                 ui,
                 GraphViewContext {
                     op_system: self.runtime.get_operator_system(),
+                    command_dispatcher: &self.history,
                 },
             );
         });
+
+        self.process_commands();
     }
 }

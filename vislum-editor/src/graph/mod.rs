@@ -1,15 +1,16 @@
 use std::{cell::RefCell, collections::HashMap};
 
 mod node;
+mod commands;
 
 use eframe::egui::{self, Rect, Widget};
 use slotmap::SecondaryMap;
 use vislum_op::{Graph, InputIndex, NodeId, OperatorSystem, OutputIndex, Placement};
 
-use crate::graph::{
+use crate::{command::{CommandDispatcher, History}, graph::{
     self,
     node::{NodeInputVirtualSlotKey, NodeOutputKey, NodeView},
-};
+}};
 
 #[derive(Default)]
 pub enum OpenedGraph {
@@ -32,6 +33,7 @@ impl OpenedGraph {
 
 pub struct GraphViewContext<'a> {
     pub op_system: &'a OperatorSystem,
+    pub command_dispatcher: &'a dyn CommandDispatcher,
 }
 
 // pub(crate) struct GraphVisualInfo {
