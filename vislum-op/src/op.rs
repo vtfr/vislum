@@ -97,6 +97,31 @@ pub trait RegisterOperator {
     }
 }
 
+/// A macro for bundling together multiple operators in a single [`RegisterOperator`]`.
+#[macro_export]
+macro_rules! bundle {
+    (
+        $(#[$meta:meta])*
+        pub struct $ident:ident { 
+            $($registerer:path),* 
+            $(,)? 
+        }
+    ) => {
+
+        $(#[$meta])*
+        pub struct $ident;
+
+        $(#[$meta])*
+        impl vislum_op::RegisterOperator for $ident {
+            fn register_operator(registry: &mut vislum_op::OperatorTypeRegistry) {
+                $(
+                    <$registerer as vislum_op::RegisterOperator>::register_operator(registry);
+                )*
+            }
+        }
+    }
+}
+
 /// A specification of an input to an operator.
 pub struct InputSpecification {
     pub name: Cow<'static, str>,

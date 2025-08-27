@@ -3330,6 +3330,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vislum-op-std"
+version = "0.1.0"
+dependencies = [
+ "vislum-op",
+]
+
+[[package]]
 name = "vislum-player"
 version = "0.1.0"
 dependencies = [

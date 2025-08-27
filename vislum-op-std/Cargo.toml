@@ -1,0 +1,7 @@
+[package]
+name = "vislum-op-std"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vislum-op = { path = "../vislum-op" }
