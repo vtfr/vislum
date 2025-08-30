@@ -191,7 +191,7 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
             let ty = input.ty;
 
             quote! {
-                #ident: <#ty as vislum_op::eval::CompileInput>::compile_input(ctx, node, #index)?
+                #ident: <#ty as vislum_op::compile::CompileInput>::compile_input(ctx, node, #index)?
             }
         });
 
@@ -213,7 +213,7 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
             };
 
             quote! {
-                <#ty as vislum_op::eval::GetInputDefinition>::get_input_definition(
+                <#ty as vislum_op::compile::GetInputDefinition>::get_input_definition(
                     #name,
                     #assignments,
                 )
@@ -228,7 +228,7 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
                 .unwrap_or_else(|| output.ident.to_string());
 
             quote! {
-                <#ty as vislum_op::eval::GetOutputDefinition>::get_output_definition(#name)
+                <#ty as vislum_op::compile::GetOutputDefinition>::get_output_definition(#name)
             }
         });
 
@@ -239,8 +239,8 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
 
     let result = quote! {
         #[automatically_derived]
-        impl vislum_op::eval::CompileNode for #ident {
-            fn compile_node(ctx: &mut vislum_op::eval::CompilationContext, node_id: vislum_op::node::NodeId, node: &vislum_op::node::NodeBlueprint) -> Result<vislum_op::eval::NodeRef, ()> {
+        impl vislum_op::compile::CompileNode for #ident {
+            fn compile_node(ctx: &mut vislum_op::compile::CompilationContext, node_id: vislum_op::node::NodeId, node: &vislum_op::node::NodeBlueprint) -> Result<vislum_op::eval::NodeRef, ()> {
                 Ok(vislum_op::eval::NodeRef::new(node_id, Self {
                     #(#input_compilers,)*
                     #(#output_idents: Default::default(),)*
@@ -270,7 +270,7 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
                     vec![
                         #(#output_definition,)*
                     ],
-                    <#ident as vislum_op::eval::CompileNode>::compile_node,
+                    <#ident as vislum_op::compile::CompileNode>::compile_node,
                 ));
             }
         }

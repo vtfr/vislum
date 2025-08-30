@@ -1,33 +1,45 @@
-use std::{any::Any, cell::{Ref, RefCell}, collections::{HashMap}, rc::Rc};
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
-use crate::{node::{GraphBlueprint, InputBlueprint, InputId, NodeBlueprint as NodeBlueprint, NodeId, OutputId}, node_type::{AssignmentTypes, EvaluationStrategy, InputCardinality}, prelude::{InputDefinition, OutputDefinition}, value::{TaggedValue, Value}};
+use crate::{
+    node::{InputBlueprint, InputId, NodeBlueprint, NodeId, OutputId}, 
+    node_type::{AssignmentTypes, InputCardinality}, 
+    prelude::{InputDefinition, OutputDefinition}, 
+    value::{TaggedValue, Value},
+    compile::{CompileInput, GetInputDefinition, GetOutputDefinition, CompilationContext},
+};
 
-pub trait CompileInput {
-    fn compile_input(ctx: &mut CompilationContext, node: &NodeBlueprint, input_id: InputId) -> Result<Self, ()>
-    where 
-        Self: Sized;
+pub struct EvalConnection {
+    pub node: NodeRef,
+    pub output_id: OutputId,
 }
 
-/// A trait for getting the input definition of a node.
-/// 
-/// Used by the derive macro to create the appropriate [`InputDefinition`] for the input.
-pub trait GetInputDefinition {
-    /// Get the input definition for the input.
-    /// 
-    /// The macro is free to add whatever assignment types the user added for their
-    /// node, but these will be filtered out by the [`Value`] trait when appropriate.
-    fn get_input_definition(name: impl Into<String>, assignment_types: AssignmentTypes) -> InputDefinition
+impl EvalConnection {
+    pub fn eval<T>(&self, ctx: &EvalContext) -> Result<T, EvalError> 
     where 
-        Self: Sized;
+        T: Value,
+    {
+        self.node.eval(ctx)?;
+
+        let output = self.node.get_output(self.output_id);
+        match output {
+            Some(output) => {
+                match T::try_from(output) {
+                    Ok(output) => Ok(output),
+                    Err(_) => unreachable!(),
+                }
+            },
+            None => Err(EvalError::NoOutput {
+                node_id: self.node.node_id,
+                output_id: self.output_id,
+            }),
+        }
+    }
 }
 
 /// An input that accepts a single value.
 pub enum Single<T> {
     Constant(T),
-    Connection {
-        node: NodeRef,
-        output_id: OutputId,
-    }
+    Connection(EvalConnection),
 }
 
 impl<T> Single<T> 
@@ -37,27 +49,9 @@ where
     pub fn eval(&self, ctx: &EvalContext) -> Result<T, EvalError> {
         match self {
             Single::Constant(value) => Ok(value.clone()),
-            Single::Connection { node, output_id } => {
-                node.eval(ctx)?;
-                
-                match node.get_output(*output_id) {
-                    Some(output) => {
-                        match  T::try_from(output) {
-                            Ok(output) => Ok(output),
-                            Err(_) => {
-                                // This should never happen. 
-                                //
-                                // We validated the output type when compiling the node.
-                                unreachable!()
-                            }
-                        }
-                    },
-                    None => Err(EvalError::NoOutput {
-                        node_id: node.node_id,
-                        output_id: *output_id,
-                    }),
-                }
-            },
+            Single::Connection(connection) => {
+                connection.eval::<T>(ctx)
+            }
         }
     }
 }
@@ -72,7 +66,7 @@ where
             Ok(InputBlueprint::Connection(connection)) => {
                 let node = ctx.compile_node(connection.node_id)?;
 
-                Ok(Single::Connection { node, output_id: connection.output_id })
+                Ok(Single::Connection(EvalConnection { node, output_id: connection.output_id }))
             },
             _ => Err(()),
         }
@@ -93,14 +87,61 @@ where
     }
 }
 
-pub trait GetOutputDefinition {
-    /// Get the output definition for the output.
-    /// 
-    /// The macro is free to add whatever assignment types the user added for their
-    /// node, but these will be filtered out by the [`Value`] trait when appropriate.
-    fn get_output_definition(name: impl Into<String>) -> OutputDefinition
-    where 
-        Self: Sized;
+/// An input that accepts multiple connections.
+pub struct Multiple<T> {
+    pub values: Vec<EvalConnection>,
+    pub phantom: PhantomData<T>,
+}
+
+impl<T> Multiple<T>
+where 
+    T: Value,
+{
+    pub fn eval(&self, ctx: &EvalContext) -> Result<Vec<T>, EvalError> {
+        self.values.iter()
+            .map(|connection| connection.eval::<T>(ctx))
+            .collect()
+    }
+}
+
+impl<T> CompileInput for Multiple<T>
+where 
+    T: Value,
+{
+    fn compile_input(ctx: &mut CompilationContext, node: &NodeBlueprint, input_id: InputId) -> Result<Self, ()> {
+        let connection_blueprints = match node.get_input(input_id) {
+            Ok(InputBlueprint::Connection(connection)) => {
+                vec![*connection]
+            },
+            Ok(InputBlueprint::ConnectionVec(connections)) => {
+                connections.clone()
+            },
+            _ => return Err(()),
+        };
+
+        let mut connections = Vec::with_capacity(connection_blueprints.len());
+        for blueprint in connection_blueprints {
+            let node = ctx.compile_node(blueprint.node_id)?;
+
+            connections.push(EvalConnection { node, output_id: blueprint.output_id });
+        }
+
+        Ok(Multiple { values: connections, phantom: PhantomData })
+    }
+}
+
+impl<T> GetInputDefinition for Multiple<T>
+where 
+    T: Value,
+{
+    fn get_input_definition(name: impl Into<String>, _: AssignmentTypes) -> InputDefinition {
+        InputDefinition::new(
+            name, 
+            &T::INFO, 
+            InputCardinality::Multiple, 
+            AssignmentTypes::CONNECTION,
+        )
+    }
 }
 
 pub trait GetOutputValue {
@@ -120,7 +161,6 @@ where
     }
 }
 
-
 impl<T> Default for Output<T> {
     fn default() -> Self {
         Self {
@@ -137,7 +177,6 @@ where
         self.value.clone().map(|value| value.into())
     }
 }
-
 
 impl<T> GetOutputDefinition for Output<T> 
 where 
@@ -177,45 +216,6 @@ impl NodeRef {
         borrow.get_output(output_id)
     }
 }
-
-/// The context for compiling a graph.
-pub struct CompilationContext<'a> {
-    pub graph: &'a GraphBlueprint,
-    pub compiled: HashMap<NodeId, NodeRef>,
-}
-
-impl<'a> CompilationContext<'a> {
-    pub fn new(graph: &'a GraphBlueprint) -> Self {
-        Self {
-            graph,
-            compiled: HashMap::new(),
-        }
-    }
-
-    pub fn compile_node(&mut self, node_id: NodeId) -> Result<NodeRef, ()> {
-        // Check if the node is already compiled.
-        if let Some(node) = self.compiled.get(&node_id) {
-            return Ok(node.clone());
-        }
-
-        let node = self.graph.get_node(node_id).ok_or(())?;
-        let eval_node = match node.node_type().evaluation {
-            EvaluationStrategy::Compile(compile_node_fn) => {
-                compile_node_fn(self, node_id, node)?
-            },
-        };
-
-        self.compiled.insert(node_id, eval_node.clone());
-        Ok(eval_node)
-    }
-}
-
-pub trait CompileNode {
-    fn compile_node(ctx: &mut CompilationContext, node_id: NodeId, node: &NodeBlueprint) -> Result<NodeRef, ()>;
-}
-
-/// A function that compiles a node.
-pub type CompileNodeFn = fn(&mut CompilationContext, node_id: NodeId, node: &NodeBlueprint) -> Result<NodeRef, ()>;
 
 /// An evaluatable node in the node graph.
 pub trait Eval: GetOutput {

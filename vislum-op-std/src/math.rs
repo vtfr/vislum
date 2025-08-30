@@ -47,7 +47,7 @@ pub struct MultiplyFloats {
     #[input]
     a: Single<f32>,
 
-    #[input(assignment(CONSTANT | CONNECTION))]
+    #[input]
     b: Single<f32>,
 
     #[output]

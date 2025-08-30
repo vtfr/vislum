@@ -1,43 +1,68 @@
-use std::{error::Error, rc::Rc};
+use std::error::Error;
 
-use vislum_op::{eval::{CompilationContext, Eval, EvalContext, EvalError, Output, Single}, prelude::*};
+use vislum_op::{compile::CompilationContext, eval::{Eval, EvalContext, EvalError, Multiple, Output, Single}, prelude::*};
 
 #[derive(Node)]
-struct Banana {
-    #[input(assignment(CONSTANT))]
-    a: Single<f32>,
-    #[input(assignment(CONSTANT))]
-    b: Single<f32>,
+struct SumAll {
+    #[input]
+    b: Multiple<f32>,
     #[output]
     c: Output<f32>,
 }
 
-impl Eval for Banana {
+impl Eval for SumAll {
     fn eval(&mut self, ctx: &EvalContext) -> Result<(), EvalError> {
-        let a = self.a.eval(ctx)?;
-        let b = self.b.eval(ctx)?;
-        self.c.set(a + b);
+        let values = self.b.eval(ctx)?.into_iter().sum::<f32>();
+        self.c.set(values as f32);
+        Ok(())
+    }
+}
+
+#[derive(Node)]
+struct Constant {
+    #[input]
+    value: Single<f32>,
+    #[output]
+    constant: Output<f32>,
+}
+
+impl Eval for Constant {
+    fn eval(&mut self, ctx: &EvalContext) -> Result<(), EvalError> {
+        let value = self.value.eval(ctx)?;
+        self.constant.set(value);
         Ok(())
     }
 }
 
 fn main() -> Result<(), Box<dyn Error>>{
     let mut registry = NodeTypeRegistry::new();
-    <Banana as vislum_op::node_type::RegisterNodeType>::register_node_type(&mut registry);
+    <SumAll as vislum_op::node_type::RegisterNodeType>::register_node_type(&mut registry);
+    <Constant as vislum_op::node_type::RegisterNodeType>::register_node_type(&mut registry);
 
-    let banana_type = registry.get("Banana").unwrap();
+    let constant_type = registry.get("Constant").unwrap();
+    let sum_all_type = registry.get("SumAll").unwrap();
 
     let mut graph = GraphBlueprint::new();
-    let node_id = graph.add_node_of_type(banana_type.clone());
-    graph.assign_constant(node_id, 0, TaggedValue::Float(1.0))?;
-    graph.assign_constant(node_id, 1, TaggedValue::Float(2.0))?;
+
+    let constant_node_id = graph.add_node_of_type(constant_type.clone());
+    graph.assign_constant(constant_node_id, 0, TaggedValue::Float(1.0))?;
+
+    let sum_all_node_id = graph.add_node_of_type(sum_all_type.clone());
+    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
+    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
+    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
+    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
+    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
+    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
+    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
+    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
 
     let mut ctx = CompilationContext::new(&graph);
-    let node = ctx.compile_node(node_id).unwrap();
+    let sum_all_node = ctx.compile_node(sum_all_node_id).unwrap();
 
-    node.eval(&EvalContext)?;
+    sum_all_node.eval(&EvalContext)?;
 
-    println!("{:?}", node.get_output(0));
+    println!("{:?}", sum_all_node.get_output(0));
 
     Ok(())
 }

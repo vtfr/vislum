@@ -2,6 +2,7 @@ pub mod value;
 pub mod node_type;
 pub mod node;
 pub mod types;
+pub mod compile;
 pub mod eval;
 
 pub mod prelude {
@@ -13,6 +14,8 @@ pub mod prelude {
     };
 
     pub use crate::eval::{Node, Eval};
+
+    pub use crate::compile::{CompileInput, GetInputDefinition, GetOutputDefinition, CompileNode, CompilationContext};
 
     pub use crate::node_type::{
         InputDefinition, NodeType, NodeTypeRegistry, OutputDefinition, NodeTypeId,

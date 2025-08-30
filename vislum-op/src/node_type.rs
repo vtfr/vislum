@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use crate::eval::CompileNodeFn;
-use crate::node::{InputBlueprint, NodeBlueprint};
 use crate::value::SValueTypeInfo;
+use crate::compile::CompileNodeFn;
+use crate::node::{InputBlueprint, NodeBlueprint};
 
 /// A unique identifier for a node type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
