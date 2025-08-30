@@ -1,24 +1,34 @@
-use vislum_asset::AssetSystem;
-use vislum_op::OperatorSystem;
+use vislum_op::system::NodeGraphSystem;
+use vislum_system::{SysMut, SysRef, System, Systems};
 
 /// The runtime for the vislum engine.
 pub struct Runtime {
-    // pub assets: AssetSystem,
-    pub operators: OperatorSystem,
+    systems: Systems,
 }
 
 impl Runtime {
     pub fn new() -> Self {
+        let mut systems = Systems::new();
+        systems.insert(NodeGraphSystem::default());
+
         Self {
-            operators: OperatorSystem::new(),
+            systems,
         }
     }
 
-    pub fn get_operator_system(&self) -> &OperatorSystem {
-        &self.operators
+    /// Gets a system by type.
+    pub fn get_system<T>(&self) -> SysRef<T>
+    where
+        T: System + 'static,
+    {
+        self.systems.must_get::<T>()
     }
 
-    pub fn get_operator_system_mut(&mut self) -> &mut OperatorSystem {
-        &mut self.operators
+    /// Gets a mutable system by type.
+    pub fn get_system_mut<T>(&self) -> SysMut<T>
+    where
+        T: System + 'static,
+    {
+        self.systems.must_get_mut::<T>()
     }
 }

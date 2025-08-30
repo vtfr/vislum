@@ -1,21 +1,21 @@
 use std::collections::HashMap;
 
 use eframe::egui::{
-    self, Align, Color32, Label, Layout, Margin, Rect, RichText, Sense, Stroke, UiBuilder,
+    self, Align, Color32, Id, Label, Layout, Margin, Rect, RichText, Sense, Stroke, UiBuilder,
     WidgetText, vec2,
 };
-use vislum_op::{InputIndex, Node, NodeId, OutputIndex, Placement};
+use vislum_op::{node::InputId, prelude::*, system::NodeGraphSystem};
 
 use crate::graph::GraphElementPositioning;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeOutputKey {
     node_id: NodeId,
-    index: OutputIndex,
+    index: OutputId,
 }
 
 impl NodeOutputKey {
-    pub const fn new(node_id: NodeId, index: OutputIndex) -> Self {
+    pub const fn new(node_id: NodeId, index: OutputId) -> Self {
         Self { node_id, index }
     }
 }
@@ -24,12 +24,12 @@ impl NodeOutputKey {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeInputVirtualSlotKey {
     node_id: NodeId,
-    index: InputIndex,
-    placement: Placement,
+    index: InputId,
+    placement: ConnectionPlacement,
 }
 
 impl NodeInputVirtualSlotKey {
-    pub const fn new(node_id: NodeId, index: InputIndex, placement: Placement) -> Self {
+    pub const fn new(node_id: NodeId, index: InputId, placement: ConnectionPlacement) -> Self {
         Self {
             node_id,
             index,
@@ -40,7 +40,8 @@ impl NodeInputVirtualSlotKey {
     /// Returns true if the slot is virtual.
     #[inline]
     pub fn is_virtual(&self) -> bool {
-        matches!(self.placement, Placement::After(_))
+        false
+        //matches!(self.placement, ConnectionPlacement::End)
     }
 
     /// Returns true if the slot is real.
@@ -50,20 +51,36 @@ impl NodeInputVirtualSlotKey {
     }
 
     #[inline]
-    pub fn index(&self) -> InputIndex {
+    pub fn index(&self) -> InputId {
         self.index
     }
 
     #[inline]
-    pub fn placement(&self) -> Placement {
+    pub fn connection_placement(&self) -> ConnectionPlacement {
         self.placement
     }
 }
 
 pub struct NodeView<'a> {
     pub node_id: NodeId,
-    pub node: &'a Node,
+    pub node: &'a NodeBlueprint,
     pub element_positioning: &'a mut GraphElementPositioning,
+    pub actions: Vec<NodeAction>,
+}
+
+impl<'a> NodeView<'a> {
+    pub fn new(
+        node_id: NodeId,
+        node: &'a NodeBlueprint,
+        element_positioning: &'a mut GraphElementPositioning,
+    ) -> Self {
+        Self {
+            node_id,
+            node,
+            element_positioning,
+            actions: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,6 +93,7 @@ pub enum NodeAction {
     BeginDraggingInput(NodeInputVirtualSlotKey),
     DraggedInput(NodeInputVirtualSlotKey, egui::Pos2),
     EndDraggingInput(NodeInputVirtualSlotKey),
+    Delete,
 }
 
 pub struct NodeResponse {
@@ -83,13 +101,10 @@ pub struct NodeResponse {
 }
 
 impl<'a> NodeView<'a> {
-    /// Draws the node's inner UI.
-    pub fn inner_ui(&mut self, ui: &mut egui::Ui) -> NodeResponse {
-        let mut actions = Vec::new();
-
+    pub fn ui(mut self, ui: &mut egui::Ui) -> NodeResponse {
         let ui_builder = UiBuilder::new()
-            .id_salt(self.node_id)
-            .layout(Layout::left_to_right(Align::Min).with_cross_align(Align::Center))
+            .id_salt(("node", self.node_id))
+            .max_rect(Rect::from_min_size(egui::pos2(0.0, 0.0), vec2(200.0, 100.0)))
             .sense(Sense::hover());
 
         ui.scope_builder(ui_builder, |ui| {
@@ -100,66 +115,67 @@ impl<'a> NodeView<'a> {
                 .show(ui, |ui| {
                     ui.set_max_size(vec2(200.0, 100.0));
 
-                    self.inputs_ui(ui, &mut actions);
-                    self.title_ui(ui, &mut actions);
-                    self.outputs_ui(ui, &mut actions);
+                    self.inputs_ui(ui);
+                    self.title_ui(ui);
+                    self.outputs_ui(ui);
                 });
         });
 
-        NodeResponse { actions }
+        NodeResponse {
+            actions: self.actions,
+        }
     }
 
-    fn title_ui(&mut self, ui: &mut egui::Ui, actions: &mut Vec<NodeAction>) {
-        let title = Label::new("op").sense(Sense::click_and_drag());
+    fn title_ui(&mut self, ui: &mut egui::Ui) {
+        let title = Label::new("op")
+            .selectable(false)
+            .sense(Sense::click_and_drag());
 
         let title_response = ui.add(title);
+        title_response.context_menu(|ui| {
+            ui.menu_button("Node", |ui| {
+                if ui.button("Delete").clicked() {
+                    self.actions.push(NodeAction::Delete);
+                }
+            });
+        });
         if title_response.double_clicked() {
-            actions.push(NodeAction::TitleDoubleClicked);
+            self.actions.push(NodeAction::TitleDoubleClicked);
         }
         if title_response.clicked() {
-            actions.push(NodeAction::TitleClicked);
+            self.actions.push(NodeAction::TitleClicked);
         }
         if title_response.drag_started() {
-            actions.push(NodeAction::TitleDragStarted);
+            self.actions.push(NodeAction::TitleDragStarted);
         }
         if title_response.drag_stopped() {
-            actions.push(NodeAction::TitleDragStopped);
+            self.actions.push(NodeAction::TitleDragStopped);
         }
     }
 
-    fn inputs_ui(&mut self, ui: &mut egui::Ui, actions: &mut Vec<NodeAction>) {
+    fn inputs_ui(&mut self, ui: &mut egui::Ui) {
         let ui_builder = UiBuilder::new()
             .id_salt((self.node_id, "inputs"))
             .layout(Layout::top_down(Align::Min).with_cross_align(Align::Min));
 
         ui.scope_builder(ui_builder, |ui| {
-            for input in self.node.inputs() {
-                let info = input.info();
-
+            for (input, definition) in self.node.inputs() {
                 ui.horizontal(|ui| {
-                    ui.label(info.name).on_hover_ui(|ui| {
-                        ui.label(format!(
-                            "{} slots of type {:?}",
-                            input.num_slots(),
-                            input.type_info().id
-                        ));
-                    });
+                    ui.label(&definition.name);
                 });
             }
         });
     }
 
-    fn outputs_ui(&mut self, ui: &mut egui::Ui, actions: &mut Vec<NodeAction>) {
+    fn outputs_ui(&mut self, ui: &mut egui::Ui) {
         let ui_builder = UiBuilder::new()
             .id_salt((self.node_id, "outputs"))
             .layout(Layout::top_down(Align::Min).with_cross_align(Align::Min));
 
         ui.scope_builder(ui_builder, |ui| {
             for output in self.node.outputs() {
-                let info = output.info();
-
                 ui.horizontal(|ui| {
-                    ui.label(info.name);
+                    ui.label(&output.name);
                 });
             }
         });

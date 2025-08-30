@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::{borrow::Borrow, rc::Rc};
 use std::hash::Hash;
 use std::collections::HashMap;
@@ -16,6 +17,14 @@ pub struct NodeTypeId(String);
 impl NodeTypeId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
+    }
+}
+
+impl Deref for NodeTypeId {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
     }
 }
 
@@ -280,5 +289,10 @@ impl NodeTypeRegistry {
         T: Hash + Eq + ?Sized,
     {
         self.node_types.get(id).cloned()
+    }
+
+    /// Iterates over the node types in the registry.
+    pub fn iter(&self) -> impl Iterator<Item = &Rc<NodeType>> {
+        self.node_types.values()
     }
 }

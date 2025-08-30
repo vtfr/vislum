@@ -30,6 +30,10 @@ impl NodeGraphSystem {
         Self::default()
     }
 
+    pub fn get_node_type_registry(&self) -> &NodeTypeRegistry {
+        &self.node_type_registry
+    }
+
     /// Add a node type to the registry.
     pub fn add_node_type(&mut self, node_type: NodeType) {
         self.node_type_registry.add(node_type);
@@ -52,6 +56,12 @@ impl NodeGraphSystem {
             .unwrap();
 
         self.graph.add_node_of_type(node_type)
+    }
+
+    /// Remove a node from the graph.
+    pub fn remove_node(&mut self, node_id: NodeId) {
+        self.graph.remove_node(node_id);
+        self.needs_recompilation = true;
     }
 
     /// Get the compiled nodes.

@@ -3390,6 +3390,7 @@ version = "0.1.0"
 dependencies = [
  "vislum-asset",
  "vislum-op",
+ "vislum-system",
 ]
 
 [[package]]

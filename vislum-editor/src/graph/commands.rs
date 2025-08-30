@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use vislum_op::NodeId;
+use vislum_op::{prelude::{NodeId, NodeTypeId}, system::NodeGraphSystem};
 
 use crate::{command::{merge_same, Command}, editor::Editor};
 
@@ -12,13 +12,7 @@ pub struct UpdateNodePositions {
 
 impl Command for UpdateNodePositions {
     fn apply(&self, editor: &mut Editor) {
-        let mut graph = editor.runtime.get_operator_system_mut().get_graph_mut();
-
-        for node_id in &self.node_ids {
-            if let Some(node) = graph.get_node_mut(*node_id) {
-                // TODO: Update the node position.
-            }
-        }
+        todo!()
     }
 
     fn merge(&mut self, previous: Box<dyn Command>) -> Result<(), Box<dyn Command>> {
@@ -48,10 +42,25 @@ pub struct DeleteNodes {
 
 impl Command for DeleteNodes {
     fn apply(&self, editor: &mut Editor) {
-        let graph = editor.runtime.get_operator_system_mut().get_graph_mut();
+        let mut system = editor.runtime.get_system_mut::<NodeGraphSystem>();
         for node_id in &self.node_ids {
-            graph.remove_node(*node_id);
+            system.remove_node(*node_id);
         }
+    }
+
+    fn undoable(&self) -> bool {
+        true
+    }
+}
+
+pub struct AddNodeCommand {
+    pub node_type_id: NodeTypeId,
+}
+
+impl Command for AddNodeCommand {
+    fn apply(&self, editor: &mut Editor) {
+        let mut system = editor.runtime.get_system_mut::<NodeGraphSystem>();
+        system.add_node(&self.node_type_id);
     }
 
     fn undoable(&self) -> bool {

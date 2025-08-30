@@ -2,7 +2,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use thiserror::Error;
 
-use crate::{new_uuid_type, node_type::{InputCardinality, InputDefinition, NodeType}, value::TaggedValue};
+use crate::{compile::OutputDefinition, new_uuid_type, node_type::{InputCardinality, InputDefinition, NodeType}, value::TaggedValue};
 
 pub type OutputId = usize;
 pub type InputId = usize;
@@ -27,7 +27,7 @@ impl Connection {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ConnectionPlacement {
     End,
 }
@@ -39,6 +39,16 @@ pub enum InputBlueprint {
     ConnectionVec(Vec<Connection>),
     #[default]
     Unset,
+}
+
+impl InputBlueprint {
+    pub fn connected_to(&self, node_id: NodeId) -> bool {
+        match self {
+            InputBlueprint::Connection(connection) => connection.node_id == node_id,
+            InputBlueprint::ConnectionVec(connections) => connections.iter().any(|connection| connection.node_id == node_id),
+            InputBlueprint::Constant(_) | InputBlueprint::Unset => false,
+        }
+    }
 }
 
 pub struct NodeBlueprint {
@@ -139,6 +149,14 @@ impl NodeBlueprint {
         Ok(())
     }
 
+    pub fn reset_inputs_connected_to(&mut self, node_id: NodeId) {
+        for (input, blueprint) in self.inputs.iter_mut().zip(self.node_type.inputs.iter()) {
+            if input.connected_to(node_id) {
+                *input = blueprint.instantiate();
+            }
+        }
+    }
+
     pub fn get_input_with_def(&self, input_id: InputId) -> Result<(&InputBlueprint, &InputDefinition), NodeError> {
         let input_def = self.node_type
             .get_input(input_id)
@@ -159,6 +177,14 @@ impl NodeBlueprint {
             .ok_or(NodeError::InputNotFound(input_id))?;
 
         Ok((input, input_def))
+    }
+    
+    pub fn inputs(&self) -> impl Iterator<Item = (&InputBlueprint, &InputDefinition)> {
+        self.inputs.iter().zip(self.node_type.inputs.iter())
+    }
+    
+    pub fn outputs(&self) -> impl Iterator<Item = &OutputDefinition> {
+        self.node_type.outputs.iter()
     }
 }
 
@@ -281,6 +307,15 @@ impl GraphBlueprint {
         }
 
         can_connect_inner(self, node_id, input_id, connection).is_some()
+    }
+    
+    pub fn remove_node(&mut self, node_id: NodeId) {
+        // If the node was removed, we need to remove all reset to it.
+        if self.nodes.remove(&node_id).is_some() {
+            for node in self.nodes.values_mut() {
+                node.reset_inputs_connected_to(node_id);
+            }
+        }
     }
 }
 

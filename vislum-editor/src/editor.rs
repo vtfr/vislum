@@ -1,5 +1,5 @@
 use eframe::egui;
-use vislum_op::ConstructOperator;
+use vislum_op::system::NodeGraphSystem;
 use vislum_runtime::Runtime;
 
 use crate::{command::History, graph::{GraphView, GraphViewContext}};
@@ -12,14 +12,8 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(_cc: &eframe::CreationContext) -> Self {
-        let mut runtime = Runtime::new();
-        runtime
-            .get_operator_system_mut()
-            .register_operator_type::<vislum_op_std::Std>();
-        runtime
-            .get_operator_system_mut()
-            .get_graph_mut()
-            .add_node(<vislum_op_std::math::AddFloats as ConstructOperator>::construct_operator());
+        let runtime = Runtime::new();
+        runtime.get_system_mut::<NodeGraphSystem>().register_node_types::<vislum_op_std::Std>();
 
         Self {
             runtime,
@@ -62,12 +56,13 @@ impl eframe::App for Editor {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.set_pixels_per_point(1.5);
 
+        // The editor widget.
         egui::CentralPanel::default().show(ctx, |ui| {
             self.graph_view.ui(
                 ui,
                 GraphViewContext {
-                    op_system: self.runtime.get_operator_system(),
-                    command_dispatcher: &self.history,
+                    op_system: &self.runtime.get_system::<NodeGraphSystem>(),
+                    dispatcher: &self.history,
                 },
             );
         });

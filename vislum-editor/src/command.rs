@@ -5,7 +5,7 @@ use downcast_rs::{impl_downcast, Downcast};
 use crate::editor::Editor;
 
 /// A command that can be applied to the editor.
-pub trait Command: Downcast {
+pub trait Command: Downcast + 'static {
     /// Applies the command to the editor.
     fn apply(&self, editor: &mut Editor);
 
@@ -50,9 +50,9 @@ pub trait CommandDispatcher {
 impl dyn CommandDispatcher {
     /// Dispatch a command of type `T`.
     #[inline]
-    fn dispatch<T>(&mut self, command: T) 
+    pub fn dispatch<T>(&self, command: T) 
     where 
-        T: Command 
+        T: Command + 'static
     {
         self.dispatch_dyn(Box::new(command));
     }
@@ -72,7 +72,7 @@ impl History {
     pub fn process_commands(&mut self, editor: &mut Editor) {
         let mut queue = self.queue.borrow_mut();
 
-        while let Some(command) = queue.pop() {
+        for command in queue.drain(..) {
             command.apply(editor);
         }
     }
