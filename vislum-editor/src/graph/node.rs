@@ -113,7 +113,7 @@ impl<'a> NodeView<'a> {
             ))
             .sense(Sense::hover());
 
-        ui.scope_builder(ui_builder, |ui| {
+        let response = ui.scope_builder(ui_builder, |ui| {
             egui::Frame::new()
                 .inner_margin(Margin::symmetric(8, 6))
                 .fill(Color32::DARK_GRAY)
@@ -126,6 +126,9 @@ impl<'a> NodeView<'a> {
                     })
                 });
         });
+
+        // Track the rect of the node.
+        self.element_positioning.node_rects.insert(self.node_id, response.response.rect);
 
         NodeResponse {
             node_id: self.node_id,
@@ -143,11 +146,9 @@ impl<'a> NodeView<'a> {
 
                 let title_response = ui.add(title);
                 title_response.context_menu(|ui| {
-                    ui.menu_button("Node", |ui| {
-                        if ui.button("Delete").clicked() {
-                            self.actions.push(NodeAction::Delete);
-                        }
-                    });
+                    if ui.button("Delete").clicked() {
+                        self.actions.push(NodeAction::Delete);
+                    }
                 });
                 if title_response.double_clicked() {
                     self.actions.push(NodeAction::TitleDoubleClicked);
@@ -175,7 +176,7 @@ impl<'a> NodeView<'a> {
             .layout(Layout::top_down(Align::Min));
 
         ui.scope_builder(ui_builder, |ui| {
-            for (input, definition) in self.node.inputs() {
+            for (input_index, (input, definition)) in self.node.inputs().enumerate() {
                 // If the input does not accept connections, skip it.
                 if !definition.flags.accepts_connections() {
                     continue;
@@ -183,7 +184,13 @@ impl<'a> NodeView<'a> {
 
                 ui.horizontal(|ui| {
                     ui.horizontal(|ui| {
-                        pin_ui(ui, &definition.value_type);
+                        let response = pin_ui(ui, &definition.value_type);
+
+                        // Track the rect of the pin.
+                        self.element_positioning.node_input_virtual_slot_rects.insert(
+                            NodeInputVirtualSlotKey::new(self.node_id, input_index, ConnectionPlacement::End),
+                            response.rect,
+                        );
 
                         let _ = Label::new(&definition.name)
                             .selectable(false)
@@ -201,14 +208,20 @@ impl<'a> NodeView<'a> {
             .layout(Layout::top_down(Align::Min).with_cross_align(Align::Min));
 
         ui.scope_builder(ui_builder, |ui| {
-            for output in self.node.outputs() {
+            for (output_index, output) in self.node.outputs().enumerate() {
                 ui.horizontal(|ui| {
                     let _ = Label::new(&output.name)
                         .selectable(false)
                         .sense(Sense::click_and_drag())
                         .ui(ui);
 
-                    pin_ui(ui, &output.value_type);
+                    let response = pin_ui(ui, &output.value_type);
+                    
+                    // Track the rect of the pin.
+                    self.element_positioning.node_output_rects.insert(
+                        NodeOutputKey::new(self.node_id, output_index),
+                        response.rect,
+                    );
                 });
             }
         });

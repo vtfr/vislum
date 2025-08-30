@@ -14,9 +14,18 @@ use vislum_op::{prelude::*, system::NodeGraphSystem};
 use crate::{
     command::{CommandDispatcher, History},
     graph::{
-        self, commands::{AddNodeCommand, MoveNodes}, node::{NodeAction, NodeInputVirtualSlotKey, NodeOutputKey, NodeView}
+        self, commands::{AddNodeCommand, DeleteNodesCommand, MoveNodesCommand}, node::{NodeAction, NodeInputVirtualSlotKey, NodeOutputKey, NodeView}
     }, util::IntoVector2I,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+enum Interaction {
+    /// The user isn't doing anything interesting.
+    #[default]
+    Hover,
+    /// The user is performing a connection.
+    Connecting,
+}
 
 #[derive(Default)]
 pub enum OpenedGraph {
@@ -64,9 +73,9 @@ impl GraphElementPositioning {
 }
 
 pub struct GraphView {
-    /// Tracks which graph is currently opened.
     opened_graph: OpenedGraph,
     graph_element_positioning: GraphElementPositioning,
+    interaction: Interaction,
     scene_rect: Rect,
 }
 
@@ -76,6 +85,7 @@ impl Default for GraphView {
             opened_graph: Default::default(),
             graph_element_positioning: Default::default(),
             scene_rect: Rect::ZERO,
+            interaction: Default::default(),
         }
     }
 }
@@ -117,9 +127,14 @@ impl GraphView {
             for action in node_response.actions {
                 match action {
                     NodeAction::TitleDragged(delta) => {
-                        context.dispatcher.dispatch_dyn(Box::new(MoveNodes {
+                        context.dispatcher.dispatch_dyn(Box::new(MoveNodesCommand {
                             node_ids: HashSet::from([node_response.node_id]),
                             delta: delta.into_vector2i(),
+                        }));
+                    }
+                    NodeAction::Delete => {
+                        context.dispatcher.dispatch_dyn(Box::new(DeleteNodesCommand {
+                            node_ids: HashSet::from([node_response.node_id]),
                         }));
                     }
                     _ => {}

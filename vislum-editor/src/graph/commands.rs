@@ -37,11 +37,11 @@ impl Command for UpdateNodePositions {
 }
 
 /// Deletes the given nodes.
-pub struct DeleteNodes {
+pub struct DeleteNodesCommand {
     pub node_ids: HashSet<NodeId>,
 }
 
-impl Command for DeleteNodes {
+impl Command for DeleteNodesCommand {
     fn apply(&self, editor: &mut Editor) {
         let mut system = editor.runtime.get_system_mut::<NodeGraphSystem>();
         for node_id in &self.node_ids {
@@ -69,12 +69,12 @@ impl Command for AddNodeCommand {
     }
 }
 
-pub struct MoveNodes {
+pub struct MoveNodesCommand {
     pub node_ids: HashSet<NodeId>,
     pub delta: Vector2I
 }
 
-impl Command for MoveNodes {
+impl Command for MoveNodesCommand {
     fn apply(&self, editor: &mut Editor) {
         let mut system = editor.runtime.get_system_mut::<NodeGraphSystem>();
         let ids = self.node_ids.iter().copied();

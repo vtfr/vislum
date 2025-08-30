@@ -26,7 +26,7 @@ impl Eval for AddFloats {
 #[derive(Node)]
 #[node(name("vislum.std.math.ConstantFloat"))]
 pub struct ConstantFloat {
-    #[input]
+    #[input(assignment(CONSTANT))]
     value: Single<f32>,
 
     #[output]
