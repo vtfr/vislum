@@ -58,9 +58,15 @@ impl dyn CommandDispatcher {
     }
 }
 
+struct Undo {
+    pub command: Box<dyn Command>,
+}
+
 #[derive(Default)]
 pub struct History {
+    undo_stack: Vec<Undo>,
     queue: RefCell<Vec<Box<dyn Command>>>,
+
 }
 
 impl History {
@@ -72,9 +78,35 @@ impl History {
     pub fn process_commands(&mut self, editor: &mut Editor) {
         let mut queue = self.queue.borrow_mut();
 
-        for command in queue.drain(..) {
+        for mut command in queue.drain(..) {
             command.apply(editor);
+
+            // If there's any command in the undo stack, try to merge it with the new command.
+            if let Some(last) = self.undo_stack.pop() {
+                // If the merge is successful, push the new command to the undo stack.
+                match command.merge(last.command) {
+                    Ok(_) => {
+                        // Merge successful. Push the new command to the undo stack.
+                        self.undo_stack.push(Undo { command: command });
+                    },
+                    Err(previous) => {
+                        // Cannot merge the commands. 
+                        //
+                        // Re-add the previous command to the undo stack.
+                        self.undo_stack.push(Undo { command: previous });
+
+                        // Snapshot the current state of the editor.
+
+                        // Push the new command to the undo stack.
+                        self.undo_stack.push(Undo { command: command });
+                    },
+                }
+            } else {
+                self.undo_stack.push(Undo { command: command });
+            }
         }
+
+        dbg!(&self.undo_stack.len());
     }
 }
 

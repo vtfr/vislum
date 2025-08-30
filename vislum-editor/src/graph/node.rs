@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use eframe::egui::{
-    self, Align, Color32, Id, Label, Layout, Margin, Rect, RichText, Sense, Stroke, UiBuilder,
-    WidgetText, vec2,
+    self, Align, Color32, Frame, Id, Label, Layout, Margin, Rect, RichText, Sense, Stroke,
+    UiBuilder, Widget, WidgetText, vec2,
 };
 use vislum_op::{node::InputId, prelude::*, system::NodeGraphSystem};
 
-use crate::graph::GraphElementPositioning;
+use crate::graph::{GraphElementPositioning, pin::pin_ui};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeOutputKey {
@@ -97,14 +97,20 @@ pub enum NodeAction {
 }
 
 pub struct NodeResponse {
+    pub node_id: NodeId,
     pub actions: Vec<NodeAction>,
 }
 
 impl<'a> NodeView<'a> {
     pub fn ui(mut self, ui: &mut egui::Ui) -> NodeResponse {
+        let position = self.node.position;
+
         let ui_builder = UiBuilder::new()
             .id_salt(("node", self.node_id))
-            .max_rect(Rect::from_min_size(egui::pos2(0.0, 0.0), vec2(200.0, 100.0)))
+            .max_rect(Rect::from_min_size(
+                egui::pos2(position.x() as f32, position.y() as f32),
+                vec2(200.0, 100.0),
+            ))
             .sense(Sense::hover());
 
         ui.scope_builder(ui_builder, |ui| {
@@ -113,55 +119,77 @@ impl<'a> NodeView<'a> {
                 .fill(Color32::DARK_GRAY)
                 .stroke(Stroke::new(1., Color32::GRAY))
                 .show(ui, |ui| {
-                    ui.set_max_size(vec2(200.0, 100.0));
-
-                    self.inputs_ui(ui);
-                    self.title_ui(ui);
-                    self.outputs_ui(ui);
+                    ui.horizontal(|ui| {
+                        self.inputs_ui(ui);
+                        self.title_ui(ui);
+                        self.outputs_ui(ui);
+                    })
                 });
         });
 
         NodeResponse {
+            node_id: self.node_id,
             actions: self.actions,
         }
     }
 
     fn title_ui(&mut self, ui: &mut egui::Ui) {
-        let title = Label::new("op")
-            .selectable(false)
-            .sense(Sense::click_and_drag());
+        Frame::new()
+            .inner_margin(Margin::symmetric(8, 6))
+            .show(ui, |ui| {
+                let title = Label::new("op")
+                    .selectable(false)
+                    .sense(Sense::click_and_drag());
 
-        let title_response = ui.add(title);
-        title_response.context_menu(|ui| {
-            ui.menu_button("Node", |ui| {
-                if ui.button("Delete").clicked() {
-                    self.actions.push(NodeAction::Delete);
+                let title_response = ui.add(title);
+                title_response.context_menu(|ui| {
+                    ui.menu_button("Node", |ui| {
+                        if ui.button("Delete").clicked() {
+                            self.actions.push(NodeAction::Delete);
+                        }
+                    });
+                });
+                if title_response.double_clicked() {
+                    self.actions.push(NodeAction::TitleDoubleClicked);
+                }
+                if title_response.clicked() {
+                    self.actions.push(NodeAction::TitleClicked);
+                }
+                if title_response.drag_delta().length_sq() > 0.0 {
+                    self.actions.push(NodeAction::TitleDragged(
+                        title_response.drag_delta().to_pos2(),
+                    ));
+                }
+                if title_response.drag_started() {
+                    self.actions.push(NodeAction::TitleDragStarted);
+                }
+                if title_response.drag_stopped() {
+                    self.actions.push(NodeAction::TitleDragStopped);
                 }
             });
-        });
-        if title_response.double_clicked() {
-            self.actions.push(NodeAction::TitleDoubleClicked);
-        }
-        if title_response.clicked() {
-            self.actions.push(NodeAction::TitleClicked);
-        }
-        if title_response.drag_started() {
-            self.actions.push(NodeAction::TitleDragStarted);
-        }
-        if title_response.drag_stopped() {
-            self.actions.push(NodeAction::TitleDragStopped);
-        }
     }
 
     fn inputs_ui(&mut self, ui: &mut egui::Ui) {
         let ui_builder = UiBuilder::new()
             .id_salt((self.node_id, "inputs"))
-            .layout(Layout::top_down(Align::Min).with_cross_align(Align::Min));
+            .layout(Layout::top_down(Align::Min));
 
         ui.scope_builder(ui_builder, |ui| {
             for (input, definition) in self.node.inputs() {
+                // If the input does not accept connections, skip it.
+                if !definition.flags.accepts_connections() {
+                    continue;
+                }
+
                 ui.horizontal(|ui| {
-                    ui.label(&definition.name);
+                    ui.horizontal(|ui| {
+                        pin_ui(ui, &definition.value_type);
+
+                        let _ = Label::new(&definition.name)
+                            .selectable(false)
+                            .sense(Sense::click_and_drag())
+                            .ui(ui);
+                    });
                 });
             }
         });
@@ -175,7 +203,12 @@ impl<'a> NodeView<'a> {
         ui.scope_builder(ui_builder, |ui| {
             for output in self.node.outputs() {
                 ui.horizontal(|ui| {
-                    ui.label(&output.name);
+                    let _ = Label::new(&output.name)
+                        .selectable(false)
+                        .sense(Sense::click_and_drag())
+                        .ui(ui);
+
+                    pin_ui(ui, &output.value_type);
                 });
             }
         });

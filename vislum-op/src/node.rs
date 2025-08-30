@@ -328,6 +328,14 @@ impl GraphBlueprint {
         can_connect_inner(self, node_id, input_id, connection).is_some()
     }
     
+    pub fn update_node_positions_with_offset(&mut self, node_ids: impl Iterator<Item = NodeId>, offset: Vector2I) {
+        for node_id in node_ids {
+            if let Some(node) = self.nodes.get_mut(&node_id) {
+                node.position += offset;
+            }
+        }
+    }
+
     pub fn remove_node(&mut self, node_id: NodeId) {
         // If the node was removed, we need to remove all reset to it.
         if self.nodes.remove(&node_id).is_some() {

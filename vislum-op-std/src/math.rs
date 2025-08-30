@@ -144,7 +144,7 @@ impl Eval for SinCosFloat {
 
 bundle! {
     /// A bundle of all math operators.
-    pub struct Math {
+    pub struct MathStd {
         AddFloats,
         ConstantFloat,
         MultiplyFloats,

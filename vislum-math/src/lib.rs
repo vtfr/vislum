@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, AddAssign, Mul, Sub};
 
 macro_rules! impl_vector {
     ($ident:ident; $ty:ty; $constructor:ident; $inner:path; $($field:ident),*) => {
@@ -38,6 +38,12 @@ macro_rules! impl_vector {
             
             fn add(self, rhs: Self) -> Self::Output {
                 Self { inner: self.inner + rhs.inner }
+            }
+        }
+
+        impl AddAssign for $ident {
+            fn add_assign(&mut self, rhs: Self) {
+                self.inner += rhs.inner;
             }
         }
 

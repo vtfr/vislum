@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use thiserror::Error;
+use vislum_math::Vector2I;
 use vislum_system::System;
 
 use crate::{compile::CompilationContext, eval::{EvalContext, EvalError, NodeRef}, node::{Connection, ConnectionPlacement, GraphBlueprint, GraphError, InputId, NodeId}, node_type::{NodeTypeRegistry, RegisterNodeType}, prelude::NodeType, value::TaggedValue};
@@ -62,6 +63,10 @@ impl NodeGraphSystem {
     pub fn remove_node(&mut self, node_id: NodeId) {
         self.graph.remove_node(node_id);
         self.needs_recompilation = true;
+    }
+
+    pub fn update_node_positions_with_offset(&mut self, node_ids: impl Iterator<Item = NodeId>, offset: Vector2I) {
+        self.graph.update_node_positions_with_offset(node_ids, offset);
     }
 
     /// Get the compiled nodes.

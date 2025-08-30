@@ -14,6 +14,7 @@ impl Editor {
     pub fn new(_cc: &eframe::CreationContext) -> Self {
         let runtime = Runtime::new();
         runtime.get_system_mut::<NodeGraphSystem>().register_node_types::<vislum_op_std::Std>();
+        runtime.get_system_mut::<NodeGraphSystem>().add_node("MultiplyFloats");
 
         Self {
             runtime,

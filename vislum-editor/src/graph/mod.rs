@@ -1,7 +1,8 @@
-use std::{cell::RefCell, collections::HashMap};
+use std::{cell::RefCell, collections::{HashMap, HashSet}};
 
 mod commands;
 mod node;
+mod pin;
 
 use eframe::{
     egui::{self, Color32, InnerResponse, Rect, Scene, Sense, Stroke, UiBuilder, Widget},
@@ -13,8 +14,8 @@ use vislum_op::{prelude::*, system::NodeGraphSystem};
 use crate::{
     command::{CommandDispatcher, History},
     graph::{
-        self, commands::AddNodeCommand, node::{NodeInputVirtualSlotKey, NodeOutputKey, NodeView}
-    },
+        self, commands::{AddNodeCommand, MoveNodes}, node::{NodeAction, NodeInputVirtualSlotKey, NodeOutputKey, NodeView}
+    }, util::IntoVector2I,
 };
 
 #[derive(Default)]
@@ -96,6 +97,8 @@ impl GraphView {
     }
 
     fn nodes_ui(&mut self, ui: &mut egui::Ui, context: GraphViewContext) {
+        let mut node_responses = Vec::new();
+
         let scene_response = Scene::new().show(ui, &mut self.scene_rect, |ui| {
             let graph = self.opened_graph.resolve(&context.op_system).unwrap();
 
@@ -106,11 +109,25 @@ impl GraphView {
                     &mut self.graph_element_positioning,
                 );
 
-                node_view.ui(ui);
+                node_responses.push(node_view.ui(ui));
             }
         });
 
-        // Open the context menu UI.
+        for node_response in node_responses {
+            for action in node_response.actions {
+                match action {
+                    NodeAction::TitleDragged(delta) => {
+                        context.dispatcher.dispatch_dyn(Box::new(MoveNodes {
+                            node_ids: HashSet::from([node_response.node_id]),
+                            delta: delta.into_vector2i(),
+                        }));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Open the context menu UI when clicked on the background.
         scene_response
             .response
             .context_menu(|ui| {

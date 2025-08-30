@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-eframe = { version = "0.31.1", features = ["wgpu"] }
-vislum-runtime = { path = "../vislum-runtime" }
-vislum-op = { path = "../vislum-op" }
-slotmap = { workspace = true }
-vislum-op-std = { path = "../vislum-op-std" }
 downcast-rs = "2.0.1"
+eframe = { version = "0.31.1", features = ["wgpu"] }
+slotmap = { workspace = true }
+vislum-math = { path = "../vislum-math" }
+vislum-op = { path = "../vislum-op" }
+vislum-op-std = { path = "../vislum-op-std" }
+vislum-runtime = { path = "../vislum-runtime" }

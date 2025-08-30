@@ -3324,6 +3324,7 @@ dependencies = [
  "downcast-rs 2.0.1",
  "eframe",
  "slotmap",
+ "vislum-math",
  "vislum-op",
  "vislum-op-std",
  "vislum-runtime",

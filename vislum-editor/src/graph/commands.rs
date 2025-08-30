@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use vislum_math::Vector2I;
 use vislum_op::{prelude::{NodeId, NodeTypeId}, system::NodeGraphSystem};
 
 use crate::{command::{merge_same, Command}, editor::Editor};
@@ -61,6 +62,35 @@ impl Command for AddNodeCommand {
     fn apply(&self, editor: &mut Editor) {
         let mut system = editor.runtime.get_system_mut::<NodeGraphSystem>();
         system.add_node(&self.node_type_id);
+    }
+
+    fn undoable(&self) -> bool {
+        true
+    }
+}
+
+pub struct MoveNodes {
+    pub node_ids: HashSet<NodeId>,
+    pub delta: Vector2I
+}
+
+impl Command for MoveNodes {
+    fn apply(&self, editor: &mut Editor) {
+        let mut system = editor.runtime.get_system_mut::<NodeGraphSystem>();
+        let ids = self.node_ids.iter().copied();
+
+        system.update_node_positions_with_offset(ids, self.delta);
+    }
+
+    fn merge(&mut self, previous: Box<dyn Command>) -> Result<(), Box<dyn Command>> {
+        merge_same::<Self>(self, previous, 
+            |command, previous| {
+                command.node_ids == previous.node_ids
+            },
+            |command, previous| {
+                command.delta += previous.delta;
+            }
+        )
     }
 
     fn undoable(&self) -> bool {
