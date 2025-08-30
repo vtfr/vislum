@@ -228,112 +228,93 @@ pub fn derive_reflect_impl(input: DeriveInput) -> syn::Result<TokenStream> {
     let operator_type_id = ident.to_string();
 
     // Generate input initializations using the helper function
-    let input_constructors = inputs.iter().map(|input| {
-        let ident = input.ident;
-        let info = input.emit_input_info();
-        let ty = input.ty;
-        quote! {
-            #ident: <#ty as vislum_op::ConstructInput>::construct_input(#info),
-        }
-    });
+    let input_compilers = inputs
+        .iter()
+        .enumerate()
+        .map(|(index, input)| {
+            let ident = input.ident;
+            let ty = input.ty;
 
-    let output_constructors = outputs.iter().map(|output| {
-        let ident = output.ident;
-        let info = output.emit_output_info();
-        let ty = output.ty;
-        quote! {
-            #ident: <#ty as vislum_op::ConstructOutput>::construct_output(#info),
-        }
-    });
+            quote! {
+                #ident: <#ty as vislum_op::eval::CompileInput>::compile_input(ctx, node, #index)?
+            }
+        });
+
+    let input_definitions = inputs.iter()
+        .map(|input| {
+            let ty = input.ty;
+            let name = input.attrs.name.clone()
+                .map(|name| name.value())
+                .unwrap_or_else(|| input.ident.to_string());
+
+            quote! {
+                <#ty as vislum_op::eval::GetInputDefinition>::get_input_definition(
+                    #name,
+                    vislum_op::node_type::AssignmentTypes::ALL,
+                )
+            }
+        });
+
+    let output_definition = outputs.iter()
+        .map(|output| {
+            let ty = output.ty;
+            let name = output.attrs.name.clone()
+                .map(|name| name.value())
+                .unwrap_or_else(|| output.ident.to_string());
+
+            quote! {
+                <#ty as vislum_op::eval::GetOutputDefinition>::get_output_definition(#name)
+            }
+        });
 
     let outputs_len = outputs.len();
-    let output_idents = outputs
-        .iter()
-        .map(|output| output.ident)
-        .collect::<Vec<_>>();
-    let output_indexes = (0..outputs.len()).collect::<Vec<_>>();
-
-    let input_len = inputs.len();
-    let input_idents = inputs.iter().map(|input| input.ident).collect::<Vec<_>>();
-    let input_indexes = (0..input_len).collect::<Vec<_>>();
-
-    let input_specifications = inputs.iter().map(|input| {
-        let name: String = input
-            .attrs
-            .name
-            .clone()
-            .map(|name| name.value())
-            .unwrap_or_else(|| input.ident.to_string().into());
-
-        let ty = input.ty;
-
-        quote! {
-            vislum_op::InputSpecification {
-                name: #name.into(),
-                value_type: <#ty as vislum_op::ConstructInput>::type_info(),
-            }
-        }
-    });
-
+    let output_idents = outputs.iter().map(|output| output.ident).collect::<Vec<_>>();
     let state_idents = states.iter().map(|state| state.ident);
 
     let result = quote! {
-        impl vislum_op::Reflect for #ident {
-            fn type_id(&self) -> vislum_op::OperatorTypeId {
-                vislum_op::OperatorTypeId::new(#operator_type_id)
-            }
-
-            fn num_inputs(&self) -> usize {
-                #input_len
-            }
-
-            fn num_outputs(&self) -> usize {
-                #outputs_len
-            }
-
-            fn get_input(&self, index: vislum_op::InputIndex) -> Option<&dyn vislum_op::InputReflect> {
-                match index {
-                    #(#input_indexes => Some(&self.#input_idents),)*
-                    _ => None,
-                }
-            }
-
-            fn get_input_mut(&mut self, index: vislum_op::InputIndex) -> Option<&mut dyn vislum_op::InputReflect> {
-                match index {
-                    #(#input_indexes => Some(&mut self.#input_idents),)*
-                    _ => None,
-                }
-            }
-
-            fn get_output(&self, index: vislum_op::OutputIndex) -> Option<&dyn vislum_op::OutputReflect> {
-                match index {
-                    #(#output_indexes => Some(&self.#output_idents),)*
-                    _ => None,
-                }
-            }
-        }
-
-        impl vislum_op::ConstructOperator for #ident {
-            fn construct_operator() -> Box<dyn vislum_op::Operator> {
-                Box::new(#ident {
-                    #(#input_constructors)*
-                    #(#output_constructors)*
+        #[automatically_derived]
+        impl vislum_op::eval::CompileNode for #ident {
+            fn compile_node(ctx: &mut vislum_op::eval::CompilationContext, node: &vislum_op::node::NodeBlueprint) -> Result<vislum_op::eval::NodeCell, ()> {
+                Ok(vislum_op::eval::NodeCell::new(Self {
+                    #(#input_compilers,)*
+                    #(#output_idents: Default::default(),)*
                     #(#state_idents: Default::default(),)*
-                })
+                }))
             }
         }
 
-        impl vislum_op::RegisterOperator for #ident {
-            fn register_operator(registry: &mut vislum_op::OperatorTypeRegistry) {
-                registry.add(vislum_op::OperatorType {
-                    id: vislum_op::OperatorTypeId::new(#operator_type_id),
-                    inputs: vec![
-                        #(#input_specifications),*
-                    ],
-                    construct: <#ident as vislum_op::ConstructOperator>::construct_operator,
-                });
+        #[automatically_derived]
+        impl vislum_op::eval::GetOutputRef for #ident {
+            fn get_output_ref(&self, output_id: vislum_op::node::OutputId) -> Option<&dyn std::any::Any> {
+                todo!()
+                // match output_id {
+                //     #(#output_idents => Some(&self.#output_idents),)*
+                //     _ => None,
+                // }
             }
         }
+
+        #[automatically_derived]
+        impl vislum_op::node_type::RegisterNodeType for #ident {
+            fn register_node_type(registry: &mut vislum_op::node_type::NodeTypeRegistry) {
+                registry.add(vislum_op::node_type::NodeType::new(
+                    vislum_op::node_type::NodeTypeId::new(#operator_type_id),
+                    vec![
+                        #(#input_definitions,)*
+                    ],
+                    vec![
+                        #(#output_definition,)*
+                    ],
+                    <#ident as vislum_op::eval::CompileNode>::compile_node,
+                ));
+            }
+        }
+
+        /// Blanked implementaton.
+        /// 
+        /// Ensures the [`Eval`] trait has been implemented.
+        #[automatically_derived]
+        impl vislum_op::eval::Node for #ident {}
     };
 
     Ok(result)

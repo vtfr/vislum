@@ -1,154 +1,181 @@
-use std::{cell::UnsafeCell, marker::PhantomData};
+use std::{any::Any, cell::{Ref, RefCell}, collections::{HashMap}, rc::Rc};
 
-use slotmap::SecondaryMap;
-use thiserror::Error;
+use crate::{node::{GraphBlueprint, InputBlueprint, InputId, NodeBlueprint as NodeBlueprint, NodeId, OutputId}, node_type::{AssignmentTypes, EvaluationStrategy, InputCardinality}, prelude::{InputDefinition, OutputDefinition}, value::Value};
 
-use crate::{Graph, Node, NodeId, OutputIndex, TaggedValue};
-
-struct EvaluatableGraphRef<'a> {
-    pub(crate) graph: *mut Graph,
-    #[cfg(debug_assertions)]
-    pub(crate) node_borrows: UnsafeCell<SecondaryMap<NodeId, ()>>,
-    _phantom: PhantomData<&'a Graph>,
+pub trait CompileInput {
+    fn compile_input(ctx: &mut CompilationContext, node: &NodeBlueprint, input_id: InputId) -> Result<Self, ()>
+    where 
+        Self: Sized;
 }
 
-impl<'a> EvaluatableGraphRef<'a> {
-    pub fn new(graph: &'a mut Graph) -> Self {
+/// A trait for getting the input definition of a node.
+/// 
+/// Used by the derive macro to create the appropriate [`InputDefinition`] for the input.
+pub trait GetInputDefinition {
+    /// Get the input definition for the input.
+    /// 
+    /// The macro is free to add whatever assignment types the user added for their
+    /// node, but these will be filtered out by the [`Value`] trait when appropriate.
+    fn get_input_definition(name: impl Into<String>, assignment_types: AssignmentTypes) -> InputDefinition
+    where 
+        Self: Sized;
+}
+
+/// An input that accepts a single value.
+pub enum Single<T> {
+    Constant(T),
+    Connection {
+        node: NodeCell,
+        output_id: OutputId,
+    }
+}
+
+impl<T> CompileInput for Single<T>
+where 
+    T: Value,
+{
+    fn compile_input(ctx: &mut CompilationContext, node: &NodeBlueprint, input_id: InputId) -> Result<Self, ()> {
+        match node.get_input(input_id) {
+            Ok(InputBlueprint::Constant(value)) => Ok(Single::Constant(T::try_from(value.clone()).unwrap())),
+            Ok(InputBlueprint::Connection(connection)) => {
+                let node = ctx.compile_node(connection.node_id)?;
+
+                Ok(Single::Connection { node, output_id: connection.output_id })
+            },
+            _ => Err(()),
+        }
+    }
+}
+
+impl<T> GetInputDefinition for Single<T>
+where 
+    T: Value,
+{
+    fn get_input_definition(name: impl Into<String>, assignment_types: AssignmentTypes) -> InputDefinition {
+        InputDefinition::new(
+            name, 
+            &T::INFO, 
+            InputCardinality::Single, 
+            assignment_types,
+        )
+    }
+}
+
+pub trait GetOutputDefinition {
+    /// Get the output definition for the output.
+    /// 
+    /// The macro is free to add whatever assignment types the user added for their
+    /// node, but these will be filtered out by the [`Value`] trait when appropriate.
+    fn get_output_definition(name: impl Into<String>) -> OutputDefinition
+    where 
+        Self: Sized;
+}
+
+pub struct Output<T> {
+    pub value: RefCell<Option<T>>,
+}
+
+impl<T> Default for Output<T> {
+    fn default() -> Self {
         Self {
-            graph: graph as *mut Graph,
-            #[cfg(debug_assertions)]
-            node_borrows: UnsafeCell::new(SecondaryMap::with_capacity(graph.nodes.len())),
-            _phantom: PhantomData,
+            value: RefCell::new(None),
         }
     }
+}
 
-    pub fn borrow_node_mut(&self, node_id: NodeId) -> Option<NodeMutRef> {
-        unsafe {
-            let graph = &mut *(self.graph as *mut Graph);
-            let node = graph.get_node_mut(node_id)?;
+impl<T> GetOutputDefinition for Output<T> 
+where 
+    T: Value,
+{
+    fn get_output_definition(name: impl Into<String>) -> OutputDefinition {
+        OutputDefinition::new(name, &T::INFO)
+    }
+}
 
-            #[cfg(debug_assertions)]
-            self.track_borrow(node_id);
+/// The context for evaluating a graph.
+pub struct EvalContext;
 
-            Some(NodeMutRef {
-                #[cfg(debug_assertions)]
-                cell: self,
-                #[cfg(debug_assertions)]
-                node_id,
-                node,
-            })
+/// A cell for an evaluatable node.
+/// 
+/// Handles internal mutability of the node.
+#[derive(Clone)]
+pub struct NodeCell(Rc<RefCell<dyn Node>>);
+
+impl NodeCell {
+    pub fn new(node: impl Node + 'static) -> Self {
+        Self(Rc::new(RefCell::new(node)))
+    }
+
+    pub fn eval(&self, ctx: &EvalContext) -> Result<(), ()> {
+        self.0.borrow_mut().eval(ctx)
+    }
+
+    pub fn get_output_ref(&self, output_id: OutputId) -> Option<Ref<dyn Any>> {
+        let borrow = self.0.borrow();
+
+        // Short-cut the borrow.
+        if borrow.get_output_ref(output_id).is_none() {
+            return None;
         }
-    }
 
-    #[cfg(debug_assertions)]
-    pub(crate) fn track_borrow(&self, node_id: NodeId) {
-        let node_borrows = unsafe { &mut *self.node_borrows.get() };
-        if node_borrows.insert(node_id, ()).is_some() {
-            panic!("Node {:?} already borrowed", node_id);
-        }
-    }
-
-    #[cfg(debug_assertions)]
-    pub(crate) fn untrack_borrow(&self, node_id: NodeId) {
-        let node_borrows = unsafe { &mut *self.node_borrows.get() };
-        node_borrows.remove(node_id);
+        Some(Ref::map(borrow, |node| {
+            let output = node.get_output_ref(output_id);
+            
+            // SAFETY: We know the output is not None because we checked earlier.
+            unsafe { &*output.unwrap_unchecked() }
+        }))
     }
 }
 
-struct NodeMutRef<'a> {
-    #[cfg(debug_assertions)]
-    pub(crate) cell: &'a EvaluatableGraphRef<'a>,
-    #[cfg(debug_assertions)]
-    pub(crate) node_id: NodeId,
-    pub(crate) node: &'a mut Node,
+/// The context for compiling a graph.
+pub struct CompilationContext<'a> {
+    pub graph: &'a GraphBlueprint,
+    pub compiled: HashMap<NodeId, NodeCell>,
 }
 
-#[cfg(debug_assertions)]
-impl<'a> Drop for NodeMutRef<'a> {
-    fn drop(&mut self) {
-        self.cell.untrack_borrow(self.node_id);
-    }
-}
-
-impl<'a> std::ops::Deref for NodeMutRef<'a> {
-    type Target = Node;
-
-    fn deref(&self) -> &Self::Target {
-        self.node
-    }
-}
-
-impl<'a> std::ops::DerefMut for NodeMutRef<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.node
-    }
-}
-
-pub struct Evaluator<'a> {
-    evaluatable_graph: EvaluatableGraphRef<'a>,
-    systems: EvaluationSystems<'a>,
-}
-
-impl<'a> Evaluator<'a> {
-    pub fn new(graph: &'a mut Graph, systems: EvaluationSystems<'a>) -> Self {
+impl<'a> CompilationContext<'a> {
+    pub fn new(graph: &'a GraphBlueprint) -> Self {
         Self {
-            evaluatable_graph: EvaluatableGraphRef::new(graph),
-            systems,
+            graph,
+            compiled: HashMap::new(),
         }
     }
 
-    /// Gets the output value of a node.
-    ///
-    /// Evaluates the node if it has not been evaluated yet.
-    pub fn get_node_output(
-        &self,
-        node_id: NodeId,
-        output_index: OutputIndex,
-    ) -> Result<TaggedValue, EvalError> {
-        let mut node = self
-            .evaluatable_graph
-            .borrow_node_mut(node_id)
-            .ok_or(EvalError)?;
-
-        // Evaluate the node.
-        node.operator.evaluate(EvaluateContext {
-            node_id,
-            evaluator: self,
-        })?;
-
-        // Get the output value.
-        let output = node
-            .operator
-            .get_output(output_index)
-            .and_then(|output| output.get_value())
-            .ok_or(EvalError)?;
-
-        Ok(output)
-    }
-}
-
-/// The context in which an evaluation is performed.
-///
-/// Tracks all systems that are used in the evaluation.
-pub struct EvaluationSystems<'a> {
-    phantom: PhantomData<&'a ()>,
-}
-
-impl<'a> EvaluationSystems<'a> {
-    pub fn new() -> Self {
-        Self {
-            phantom: PhantomData,
+    pub fn compile_node(&mut self, node_id: NodeId) -> Result<NodeCell, ()> {
+        // Check if the node is already compiled.
+        if let Some(node) = self.compiled.get(&node_id) {
+            return Ok(node.clone());
         }
+
+        let node = self.graph.get_node(node_id).ok_or(())?;
+        let eval_node = match node.node_type().evaluation {
+            EvaluationStrategy::Compile(compile_node_fn) => {
+                compile_node_fn(self, node)?
+            },
+        };
+
+        self.compiled.insert(node_id, eval_node.clone());
+        Ok(eval_node)
     }
 }
 
-/// The context in which an operator is evaluated.
-#[derive(Copy, Clone)]
-pub struct EvaluateContext<'a> {
-    pub node_id: NodeId,
-    pub evaluator: &'a Evaluator<'a>,
+pub trait CompileNode {
+    fn compile_node(ctx: &mut CompilationContext, node: &NodeBlueprint) -> Result<NodeCell, ()>;
 }
 
-#[derive(Debug, Error)]
-#[error("Evaluation error")]
-pub struct EvalError;
+/// A function that compiles a node.
+pub type CompileNodeFn = fn(&mut CompilationContext, node: &NodeBlueprint) -> Result<NodeCell, ()>;
+
+/// An evaluatable node in the node graph.
+pub trait Eval: GetOutputRef {
+    /// Evaluate the node.
+    fn eval(&mut self, ctx: &EvalContext) -> Result<(), ()>;
+}
+
+/// A node that can be evaluated and has outputs.
+pub trait Node: Eval + GetOutputRef {}
+
+pub trait GetOutputRef {
+    /// Get a reference to an output.
+    fn get_output_ref(&self, output_id: OutputId) -> Option<&dyn Any>;
+}

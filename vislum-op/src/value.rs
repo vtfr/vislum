@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use serde::{Deserialize, Serialize};
 use smallbox::SmallBox;
 use smallbox::space::S2;
 use thiserror::Error;

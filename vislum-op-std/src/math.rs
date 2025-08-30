@@ -1,11 +1,12 @@
 use vislum_op::{bundle, EvalError, EvaluateContext, Operator, Output, Reflect, Single};
 
 /// Adds two floats.
-#[derive(Reflect)]
-#[reflect(name("vislum.std.math.AddFloats"))]
+#[derive(Operator)]
+#[operator(name("vislum.std.math.AddFloats"))]
 pub struct AddFloats {
     #[input]
     a: Single<f32>,
+
     #[input]
     b: Single<f32>,
 
@@ -13,10 +14,10 @@ pub struct AddFloats {
     add: Output<f32>,
 }
 
-impl Operator for AddFloats {
-    fn evaluate(&mut self, context: EvaluateContext) -> Result<(), EvalError> {
-        let a = self.a.evaluate(context)?;
-        let b = self.b.evaluate(context)?;
+impl Eval for AddFloats {
+    fn eval(&mut self, context: EvaluateContext) -> Result<(), EvalError> {
+        let a = self.a.eval(context)?;
+        let b = self.b.eval(context)?;
         self.add.set(a + b);
         Ok(())
     }

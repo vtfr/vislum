@@ -1,104 +1,53 @@
-use vislum_op::{
-    ConstructOperator, ErasedSlot, Graph, GraphExporter, Multi, NodeConnection, NodeId, Operator,
-    Output, Placement, Reflect, TaggedValue,
-};
+use std::{error::Error, rc::Rc};
 
-#[derive(Reflect)]
-struct Add {
+use vislum_op::{eval::{Node, EvalContext, Output, Single}, prelude::*};
+
+#[derive(Node)]
+struct Banana {
     #[input]
-    b: Multi<f32>,
-
+    a: Single<f32>,
+    #[input]
+    b: Single<f32>,
     #[output]
     c: Output<f32>,
 }
 
-impl Operator for Add {
-    fn evaluate(
-        &mut self,
-        context: vislum_op::EvaluateContext,
-    ) -> Result<(), vislum_op::EvalError> {
-        let b = self.b.iter(context).sum::<f32>();
-        self.c.set(b);
-        Ok(())
+impl Node for Banana {
+    fn eval(&mut self, ctx: &EvalContext) -> Result<(), ()> {
+        todo!()
     }
 }
 
-fn main() {
-    let mut graph = Graph::new();
-    let node_id1 = graph.add_node(<Add as ConstructOperator>::construct_operator());
-    let node_id2 = graph.add_node(<Add as ConstructOperator>::construct_operator());
-    let node_id3 = graph.add_node(<Add as ConstructOperator>::construct_operator());
+fn main() -> Result<(), Box<dyn Error>>{
+    // let add_node_type = Rc::new(NodeType::new(
+    //     NodeTypeId::new("Add"),
+    //     vec![
+    //         InputDefinition::new("a", &f32::INFO, InputCardinality::Single, AssignmentTypes::CONSTANT | AssignmentTypes::CONNECTION),
+    //         InputDefinition::new("b", &f32::INFO, InputCardinality::Single, AssignmentTypes::CONSTANT),
+    //     ],
+    //     vec![
+    //         OutputDefinition::new("c", &f32::INFO),
+    //     ],
+    // ));
 
-    quickly_wire(
-        &mut graph,
-        node_id1,
-        [
-            (
-                0,
-                ErasedSlot::Connection(NodeConnection {
-                    node_id: node_id2,
-                    output_index: 0,
-                }),
-            ),
-            (
-                0,
-                ErasedSlot::Connection(NodeConnection {
-                    node_id: node_id3,
-                    output_index: 0,
-                }),
-            ),
-            (0, ErasedSlot::Constant(TaggedValue::Float(1.0))),
-        ],
-    );
+    // let mut graph = GraphBlueprint::new();
+    // let node_id1 = graph.add_node_of_type(add_node_type.clone());
+    // let node_id2 = graph.add_node_of_type(add_node_type.clone());
 
-    quickly_wire(
-        &mut graph,
-        node_id2,
-        [
-            (
-                0,
-                ErasedSlot::Connection(NodeConnection {
-                    node_id: node_id3,
-                    output_index: 0,
-                }),
-            ),
-            (0, ErasedSlot::Constant(TaggedValue::Float(2.0))),
-        ],
-    );
+    // dbg!(graph.can_connect(node_id1, 0, Connection::new(node_id2, 0)));
 
-    quickly_wire(
-        &mut graph,
-        node_id3,
-        [
-            (0, ErasedSlot::Constant(TaggedValue::Float(7.0))),
-            (0, ErasedSlot::Constant(TaggedValue::Float(3.0))),
-            (0, ErasedSlot::Constant(TaggedValue::Float(10.0))),
-        ],
-    );
+    // graph.connect(
+    //     node_id1, 
+    //     0, 
+    //     ConnectionPlacement::End, 
+    //     Connection::new(node_id2, 0),
+    // )?;
 
-    let graph_data = GraphExporter::new(&graph).export();
-    let graph_data_json = serde_json::to_string(&graph_data).unwrap();
+    // graph.assign_constant(node_id1, 0, TaggedValue::Float(1.0))?;
+    // let node = graph.get_node(node_id1).unwrap();
+    // let (_, input_def) = node.get_input_with_def(0).unwrap();
 
-    println!("{}", &graph_data_json);
+    // println!("{:?}", input_def.flags());
 
-    // let data = serde_json::from_str::<GraphData>(&graph_data_json).unwrap(); let graph = GraphImporter::new(&registry, &data).import().unwrap();
-
-    // let evaluator = Evaluator::new(&mut graph, EvaluationSystems::new());
-    // dbg!(evaluator.get_node_output(node_id1, 0));
-}
-
-fn quickly_wire(
-    graph: &mut Graph,
-    node_id: NodeId,
-    what: impl IntoIterator<Item = (usize, ErasedSlot)>,
-) {
-    let node = graph.get_node_mut(node_id).unwrap();
-
-    for (i, slot) in what.into_iter() {
-        node.operator
-            .get_input_mut(i)
-            .unwrap()
-            .set_slot(Placement::After(i), slot)
-            .unwrap();
-    }
+    Ok(())
 }

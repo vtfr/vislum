@@ -13,3 +13,5 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 vislum-system = { path = "../vislum-system" }
 smallbox = { workspace = true }
+derive_more = { workspace = true, features = ["full"] }
+bitflags = { workspace = true }
