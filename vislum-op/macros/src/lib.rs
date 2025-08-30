@@ -17,7 +17,7 @@ pub fn derive_value(input: TokenStream) -> TokenStream {
 pub fn derive_node(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as syn::DeriveInput);
 
-    node::derive_reflect_impl(input)
+    node::derive_node_impl(input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

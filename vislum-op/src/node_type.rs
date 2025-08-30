@@ -202,10 +202,14 @@ pub trait RegisterNodeType {
 #[macro_export]
 macro_rules! bundle {
     {
-        $pub:vis struct $name:ident {
+        $(#[$attr:meta])*
+        $vis:vis struct $name:ident {
             $($registerer:path),* $(,)?
         }
     } => {
+        $(#[$attr])*
+        $vis struct $name;
+
         #[automatically_derived]
         impl vislum_op::node_type::RegisterNodeType for $name {
             fn register_node_type(registry: &mut vislum_op::node_type::NodeTypeRegistry) {

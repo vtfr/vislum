@@ -8,39 +8,6 @@ struct Input<'a> {
     pub attrs: InputAttributes,
 }
 
-impl Input<'_> {
-    pub fn emit_input_info(&self) -> TokenStream {
-        let name = self
-            .attrs
-            .name
-            .as_ref()
-            .map(|name| quote! { #name })
-            .unwrap_or_else(|| {
-                let name = self.ident.to_string();
-                quote! { #name }
-            });
-
-        let default = self
-            .attrs
-            .default
-            .as_ref()
-            .map(|default| {
-                let ty = self.ty;
-                quote! { Some(vislum_op::TaggedValue::from(#default)) }
-            })
-            .unwrap_or_else(|| quote! { None });
-
-        quote! {
-            vislum_op::InputInfo {
-                name: #name,
-                description: None,
-                default_value: #default,
-                ..Default::default()
-            }
-        }
-    }
-}
-
 #[derive(Default)]
 struct InputAttributes {
     name: Option<LitStr>,
@@ -113,25 +80,6 @@ impl Output<'_> {
 
         let attrs = OutputAttributes::parse(&attr)?;
         Ok(Output { ident, ty, attrs })
-    }
-
-    pub fn emit_output_info(&self) -> TokenStream {
-        let name = self
-            .attrs
-            .name
-            .as_ref()
-            .map(|name| quote! { #name })
-            .unwrap_or_else(|| {
-                let name = self.ident.to_string();
-                quote! { #name }
-            });
-
-        quote! {
-            vislum_op::OutputInfo {
-                name: #name,
-                description: None,
-            }
-        }
     }
 }
 
@@ -208,7 +156,7 @@ fn parse_fields<'a>(
     Ok((inputs, outputs, states))
 }
 
-pub fn derive_reflect_impl(input: DeriveInput) -> syn::Result<TokenStream> {
+pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
     let ident = &input.ident;
 
     // Extract fields

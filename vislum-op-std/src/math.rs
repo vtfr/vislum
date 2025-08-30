@@ -1,8 +1,8 @@
-use vislum_op::{bundle, EvalError, EvaluateContext, Operator, Output, Reflect, Single};
+use vislum_op::{eval::{EvalContext, Output, Single}, prelude::*};
 
 /// Adds two floats.
-#[derive(Operator)]
-#[operator(name("vislum.std.math.AddFloats"))]
+#[derive(Node)]
+#[node(name("vislum.std.math.AddFloats"))]
 pub struct AddFloats {
     #[input]
     a: Single<f32>,
@@ -15,7 +15,7 @@ pub struct AddFloats {
 }
 
 impl Eval for AddFloats {
-    fn eval(&mut self, context: EvaluateContext) -> Result<(), EvalError> {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
         let a = self.a.eval(context)?;
         let b = self.b.eval(context)?;
         self.add.set(a + b);
@@ -23,8 +23,8 @@ impl Eval for AddFloats {
     }
 }
 
-#[derive(Reflect)]
-#[reflect(name("vislum.std.math.ConstantFloat"))]
+#[derive(Node)]
+#[node(name("vislum.std.math.ConstantFloat"))]
 pub struct ConstantFloat {
     #[input]
     value: Single<f32>,
@@ -33,16 +33,16 @@ pub struct ConstantFloat {
     constant: Output<f32>,
 }
 
-impl Operator for ConstantFloat {
-    fn evaluate(&mut self, context: EvaluateContext) -> Result<(), EvalError> {
-        let value = self.value.evaluate(context)?;
+impl Eval for ConstantFloat {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+        let value = self.value.eval(context)?;
         self.constant.set(value);
         Ok(())
     }
 }
 
-#[derive(Reflect)]
-#[reflect(name("vislum.std.math.MultiplyFloats"))]
+#[derive(Node)]
+#[node(name("vislum.std.math.MultiplyFloats"))]
 pub struct MultiplyFloats {
     #[input]
     a: Single<f32>,
@@ -53,17 +53,17 @@ pub struct MultiplyFloats {
     multiplied: Output<f32>,
 }
 
-impl Operator for MultiplyFloats {
-    fn evaluate(&mut self, context: EvaluateContext) -> Result<(), EvalError> {
-        let a = self.a.evaluate(context)?;
+impl Eval for MultiplyFloats {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+        let a = self.a.eval(context)?;
         let b = self.b.evaluate(context)?;
         self.multiplied.set(a * b);
         Ok(())
     }
 }
 
-#[derive(Reflect)]
-#[reflect(name("vislum.std.math.SinFloat"))]
+#[derive(Node)]
+#[node(name("vislum.std.math.SinFloat"))]
 pub struct SinFloat {
     #[input]
     value: Single<f32>,
@@ -76,19 +76,19 @@ pub struct SinFloat {
     sin: Output<f32>,
 }
 
-impl Operator for SinFloat {
-    fn evaluate(&mut self, context: EvaluateContext) -> Result<(), EvalError> {
-        let value = self.value.evaluate(context)?;
-        let phase = self.phase.evaluate(context)?;
-        let amplitude = self.amplitude.evaluate(context)?;
+impl Eval for SinFloat {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+        let value = self.value.eval(context)?;
+        let phase = self.phase.eval(context)?;
+        let amplitude = self.amplitude.eval(context)?;
 
         self.sin.set((value + phase).sin() * amplitude);
         Ok(())
     }
 }
 
-#[derive(Reflect)]
-#[reflect(name("vislum.std.math.CosFloat"))]
+#[derive(Node)]
+#[node(name("vislum.std.math.CosFloat"))]
 pub struct CosFloat {
     #[input]
     value: Single<f32>,
@@ -100,19 +100,19 @@ pub struct CosFloat {
     cos: Output<f32>,
 }
 
-impl Operator for CosFloat {
-    fn evaluate(&mut self, context: EvaluateContext) -> Result<(), EvalError> {
-        let value = self.value.evaluate(context)?;
-        let phase = self.phase.evaluate(context)?;
-        let amplitude = self.amplitude.evaluate(context)?;
+impl Eval for CosFloat {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+        let value = self.value.eval(context)?;
+        let phase = self.phase.eval(context)?;
+        let amplitude = self.amplitude.eval(context)?;
 
         self.cos.set((value + phase).cos() * amplitude);
         Ok(())
     }
 }
 
-#[derive(Reflect)]
-#[reflect(name("vislum.std.math.SinCosFloat"))]
+#[derive(Node)]
+#[node(name("vislum.std.math.SinCosFloat"))]
 pub struct SinCosFloat {
     #[input]
     value: Single<f32>,
@@ -127,11 +127,11 @@ pub struct SinCosFloat {
     cos: Output<f32>,
 }
 
-impl Operator for SinCosFloat {
-    fn evaluate(&mut self, context: EvaluateContext) -> Result<(), EvalError> {
-        let value = self.value.evaluate(context)?;
-        let phase = self.phase.evaluate(context)?;
-        let amplitude = self.amplitude.evaluate(context)?;
+impl Eval for SinCosFloat {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+        let value = self.value.eval(context)?;
+        let phase = self.phase.eval(context)?;
+        let amplitude = self.amplitude.eval(context)?;
 
         let (sin, cos) = (value + phase).sin_cos();
 

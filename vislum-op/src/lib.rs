@@ -5,10 +5,14 @@ pub mod types;
 pub mod eval;
 
 pub mod prelude {
+    pub use crate::bundle;
+
     pub use crate::node::{
         Connection, ConnectionPlacement, InputBlueprint, NodeBlueprint, NodeId, OutputId, GraphBlueprint, GraphError,
         NodeError,
     };
+
+    pub use crate::eval::{Node, Eval};
 
     pub use crate::node_type::{
         InputDefinition, NodeType, NodeTypeRegistry, OutputDefinition, NodeTypeId,
