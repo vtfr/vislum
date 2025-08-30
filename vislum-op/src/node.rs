@@ -201,6 +201,11 @@ impl GraphBlueprint {
         self.nodes.get(&id)
     }
 
+    /// Iterates over the node ids in the graph.
+    pub fn iter_node_ids(&self) -> impl Iterator<Item = NodeId> {
+        self.nodes.keys().copied()
+    }
+
     pub fn connect(
         &mut self, 
         node_id: NodeId, 

@@ -66,6 +66,17 @@ impl<'a> CompilationContext<'a> {
         self.compiled.insert(node_id, eval_node.clone());
         Ok(eval_node)
     }
+
+    /// Compile the graph.
+    /// 
+    /// Returns a map of node ids to their compiled nodes.
+    pub fn compile_all(mut self) -> Result<HashMap<NodeId, NodeRef>, ()> {
+        for node_id in self.graph.iter_node_ids() {
+            self.compile_node(node_id)?;
+        };
+
+        Ok(self.compiled)
+    }
 }
 
 /// A trait for compiling nodes during the blueprint to runtime transformation.

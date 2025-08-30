@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use vislum_op::{compile::CompilationContext, eval::{Eval, EvalContext, EvalError, Multiple, Output, Single}, prelude::*};
+use vislum_op::{compile::CompilationContext, eval::{Eval, EvalContext, EvalError, Multiple, Output, Single}, prelude::*, system::NodeGraphSystem};
 
 #[derive(Node)]
 struct SumAll {
@@ -35,34 +35,21 @@ impl Eval for Constant {
 }
 
 fn main() -> Result<(), Box<dyn Error>>{
-    let mut registry = NodeTypeRegistry::new();
-    <SumAll as vislum_op::node_type::RegisterNodeType>::register_node_type(&mut registry);
-    <Constant as vislum_op::node_type::RegisterNodeType>::register_node_type(&mut registry);
+    let mut system = NodeGraphSystem::default();
+    system.register_node_types::<(SumAll, Constant)>();
 
-    let constant_type = registry.get("Constant").unwrap();
-    let sum_all_type = registry.get("SumAll").unwrap();
+    let constant_node_id = system.add_node("Constant");
+    system.assign_constant(constant_node_id, 0, TaggedValue::Float(1.0))?;
 
-    let mut graph = GraphBlueprint::new();
+    let sum_all_node_id = system.add_node("SumAll");
+    system.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
 
-    let constant_node_id = graph.add_node_of_type(constant_type.clone());
-    graph.assign_constant(constant_node_id, 0, TaggedValue::Float(1.0))?;
-
-    let sum_all_node_id = graph.add_node_of_type(sum_all_type.clone());
-    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
-    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
-    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
-    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
-    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
-    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
-    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
-    graph.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
-
-    let mut ctx = CompilationContext::new(&graph);
-    let sum_all_node = ctx.compile_node(sum_all_node_id).unwrap();
-
-    sum_all_node.eval(&EvalContext)?;
-
-    println!("{:?}", sum_all_node.get_output(0));
+    let result = system.eval(&EvalContext, sum_all_node_id)?;
+    println!("{:?}", result.get_output(0));
+    
+    system.assign_constant(constant_node_id, 0, TaggedValue::Float(6.0))?;
+    let result = system.eval(&EvalContext, sum_all_node_id)?;
+    println!("{:?}", result.get_output(0));
 
     Ok(())
 }

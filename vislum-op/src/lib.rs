@@ -1,9 +1,12 @@
+extern crate self as vislum_op;
+
 pub mod value;
 pub mod node_type;
 pub mod node;
 pub mod types;
 pub mod compile;
 pub mod eval;
+pub mod system;
 
 pub mod prelude {
     pub use crate::bundle;

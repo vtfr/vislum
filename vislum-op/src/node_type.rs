@@ -212,6 +212,7 @@ macro_rules! bundle {
 
         #[automatically_derived]
         impl vislum_op::node_type::RegisterNodeType for $name {
+            #[inline(always)]
             fn register_node_type(registry: &mut vislum_op::node_type::NodeTypeRegistry) {
                 $(
                     <$registerer as vislum_op::node_type::RegisterNodeType>::register_node_type(registry);
@@ -220,6 +221,36 @@ macro_rules! bundle {
         }
     }
 }
+
+macro_rules! impl_bundle_tuple {
+    ($($ty:ident),* $(,)?) => {
+        #[automatically_derived]
+        impl<$($ty),*> RegisterNodeType for ($($ty),*,)
+        where 
+            $(
+                $ty: RegisterNodeType,
+            )*
+        {
+            #[inline(always)]
+            fn register_node_type(registry: &mut vislum_op::node_type::NodeTypeRegistry) {
+                $(
+                    <$ty as RegisterNodeType>::register_node_type(registry);
+                )*
+            }
+        }
+    };
+}
+
+impl_bundle_tuple!(T1);
+impl_bundle_tuple!(T1, T2);
+impl_bundle_tuple!(T1, T2, T3);
+impl_bundle_tuple!(T1, T2, T3, T4);
+impl_bundle_tuple!(T1, T2, T3, T4, T5);
+impl_bundle_tuple!(T1, T2, T3, T4, T5, T6);
+impl_bundle_tuple!(T1, T2, T3, T4, T5, T6, T7);
+impl_bundle_tuple!(T1, T2, T3, T4, T5, T6, T7, T8);
+// this is just a convenience for testing, so 8 is plenty.
+
 
 #[derive(Default)]
 pub struct NodeTypeRegistry {
@@ -237,6 +268,7 @@ impl NodeTypeRegistry {
         self.node_types.insert(node_type.id.clone(), Rc::new(node_type));
     }
 
+    #[inline(always)]
     pub fn register<T: RegisterNodeType>(&mut self) {
         T::register_node_type(self);
     }
