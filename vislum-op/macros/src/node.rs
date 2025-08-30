@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{parse::Parser, Attribute, DeriveInput, Expr, Field, Ident, Lit, LitStr, Meta, Type};
+use syn::{Attribute, DeriveInput, Expr, Field, Ident, Lit, LitStr, Meta, Type, parse::Parser, punctuated::Punctuated};
 
 struct Input<'a> {
     pub ident: &'a Ident,
@@ -12,6 +12,7 @@ struct Input<'a> {
 struct InputAttributes {
     name: Option<LitStr>,
     default: Option<Expr>,
+    assignments: Vec<Ident>,
 }
 
 impl InputAttributes {
@@ -29,6 +30,7 @@ impl InputAttributes {
 
         let mut name = None::<LitStr>;
         let mut default = None::<Expr>;
+        let mut assignments = Vec::new();
         let metas = syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated
             .parse2(meta_list.tokens.clone())?;
 
@@ -39,10 +41,15 @@ impl InputAttributes {
             } else if meta.path().is_ident("default") {
                 let value: Expr = meta.require_list()?.parse_args()?;
                 default = Some(value);
+            } else if meta.path().is_ident("assignment") {
+                let value: Punctuated<Ident, syn::Token![|]> = meta.require_list()?
+                    .parse_args_with(Punctuated::<Ident, syn::Token![|]>::parse_separated_nonempty)?;
+
+                assignments = value.into_iter().collect();
             }
         }
 
-        Ok(Self { name, default })
+        Ok(Self { name, default, assignments })
     }
 }
 
@@ -195,10 +202,20 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
                 .map(|name| name.value())
                 .unwrap_or_else(|| input.ident.to_string());
 
+            let assignments = if input.attrs.assignments.is_empty() {
+                quote! { vislum_op::node_type::AssignmentTypes::ALL }
+            } else {
+                let assignments = input.attrs.assignments
+                    .iter()
+                    .map(|assignment| quote! { vislum_op::node_type::AssignmentTypes::#assignment });
+
+                quote! { #(#assignments)|* }
+            };
+
             quote! {
                 <#ty as vislum_op::eval::GetInputDefinition>::get_input_definition(
                     #name,
-                    vislum_op::node_type::AssignmentTypes::ALL,
+                    #assignments,
                 )
             }
         });
@@ -216,14 +233,15 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
         });
 
     let outputs_len = outputs.len();
+    let output_indexes = (0..outputs_len).map(|index| quote! { #index });
     let output_idents = outputs.iter().map(|output| output.ident).collect::<Vec<_>>();
     let state_idents = states.iter().map(|state| state.ident);
 
     let result = quote! {
         #[automatically_derived]
         impl vislum_op::eval::CompileNode for #ident {
-            fn compile_node(ctx: &mut vislum_op::eval::CompilationContext, node: &vislum_op::node::NodeBlueprint) -> Result<vislum_op::eval::NodeCell, ()> {
-                Ok(vislum_op::eval::NodeCell::new(Self {
+            fn compile_node(ctx: &mut vislum_op::eval::CompilationContext, node_id: vislum_op::node::NodeId, node: &vislum_op::node::NodeBlueprint) -> Result<vislum_op::eval::NodeRef, ()> {
+                Ok(vislum_op::eval::NodeRef::new(node_id, Self {
                     #(#input_compilers,)*
                     #(#output_idents: Default::default(),)*
                     #(#state_idents: Default::default(),)*
@@ -232,13 +250,12 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
         }
 
         #[automatically_derived]
-        impl vislum_op::eval::GetOutputRef for #ident {
-            fn get_output_ref(&self, output_id: vislum_op::node::OutputId) -> Option<&dyn std::any::Any> {
-                todo!()
-                // match output_id {
-                //     #(#output_idents => Some(&self.#output_idents),)*
-                //     _ => None,
-                // }
+        impl vislum_op::eval::GetOutput for #ident {
+            fn get_output(&self, output_id: vislum_op::node::OutputId) -> Option<TaggedValue> {
+                match output_id {
+                    #(#output_indexes => vislum_op::eval::GetOutputValue::get_output_value(&self.#output_idents),)*
+                    _ => None,
+                }
             }
         }
 

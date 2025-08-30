@@ -1,4 +1,4 @@
-use vislum_op::{eval::{EvalContext, Output, Single}, prelude::*};
+use vislum_op::{eval::{EvalContext, EvalError, Output, Single}, prelude::*};
 
 /// Adds two floats.
 #[derive(Node)]
@@ -15,7 +15,7 @@ pub struct AddFloats {
 }
 
 impl Eval for AddFloats {
-    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), EvalError> {
         let a = self.a.eval(context)?;
         let b = self.b.eval(context)?;
         self.add.set(a + b);
@@ -34,7 +34,7 @@ pub struct ConstantFloat {
 }
 
 impl Eval for ConstantFloat {
-    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), EvalError> {
         let value = self.value.eval(context)?;
         self.constant.set(value);
         Ok(())
@@ -46,7 +46,8 @@ impl Eval for ConstantFloat {
 pub struct MultiplyFloats {
     #[input]
     a: Single<f32>,
-    #[input]
+
+    #[input(assignment(CONSTANT | CONNECTION))]
     b: Single<f32>,
 
     #[output]
@@ -54,9 +55,9 @@ pub struct MultiplyFloats {
 }
 
 impl Eval for MultiplyFloats {
-    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), EvalError> {
         let a = self.a.eval(context)?;
-        let b = self.b.evaluate(context)?;
+        let b = self.b.eval(context)?;
         self.multiplied.set(a * b);
         Ok(())
     }
@@ -77,7 +78,7 @@ pub struct SinFloat {
 }
 
 impl Eval for SinFloat {
-    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), EvalError> {
         let value = self.value.eval(context)?;
         let phase = self.phase.eval(context)?;
         let amplitude = self.amplitude.eval(context)?;
@@ -101,7 +102,7 @@ pub struct CosFloat {
 }
 
 impl Eval for CosFloat {
-    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), EvalError> {
         let value = self.value.eval(context)?;
         let phase = self.phase.eval(context)?;
         let amplitude = self.amplitude.eval(context)?;
@@ -128,7 +129,7 @@ pub struct SinCosFloat {
 }
 
 impl Eval for SinCosFloat {
-    fn eval(&mut self, context: &EvalContext) -> Result<(), ()> {
+    fn eval(&mut self, context: &EvalContext) -> Result<(), EvalError> {
         let value = self.value.eval(context)?;
         let phase = self.phase.eval(context)?;
         let amplitude = self.amplitude.eval(context)?;

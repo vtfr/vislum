@@ -237,11 +237,15 @@ impl NodeTypeRegistry {
         self.node_types.insert(node_type.id.clone(), Rc::new(node_type));
     }
 
+    pub fn register<T: RegisterNodeType>(&mut self) {
+        T::register_node_type(self);
+    }
+
     /// Gets a node type from the registry.
     pub fn get<T>(&self, id: &T) -> Option<Rc<NodeType>> 
     where 
         NodeTypeId: Borrow<T>,
-        T: Hash + Eq,
+        T: Hash + Eq + ?Sized,
     {
         self.node_types.get(id).cloned()
     }

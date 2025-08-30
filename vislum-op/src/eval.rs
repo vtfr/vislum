@@ -1,6 +1,6 @@
 use std::{any::Any, cell::{Ref, RefCell}, collections::{HashMap}, rc::Rc};
 
-use crate::{node::{GraphBlueprint, InputBlueprint, InputId, NodeBlueprint as NodeBlueprint, NodeId, OutputId}, node_type::{AssignmentTypes, EvaluationStrategy, InputCardinality}, prelude::{InputDefinition, OutputDefinition}, value::Value};
+use crate::{node::{GraphBlueprint, InputBlueprint, InputId, NodeBlueprint as NodeBlueprint, NodeId, OutputId}, node_type::{AssignmentTypes, EvaluationStrategy, InputCardinality}, prelude::{InputDefinition, OutputDefinition}, value::{TaggedValue, Value}};
 
 pub trait CompileInput {
     fn compile_input(ctx: &mut CompilationContext, node: &NodeBlueprint, input_id: InputId) -> Result<Self, ()>
@@ -25,8 +25,40 @@ pub trait GetInputDefinition {
 pub enum Single<T> {
     Constant(T),
     Connection {
-        node: NodeCell,
+        node: NodeRef,
         output_id: OutputId,
+    }
+}
+
+impl<T> Single<T> 
+where 
+    T: Value,
+{
+    pub fn eval(&self, ctx: &EvalContext) -> Result<T, EvalError> {
+        match self {
+            Single::Constant(value) => Ok(value.clone()),
+            Single::Connection { node, output_id } => {
+                node.eval(ctx)?;
+                
+                match node.get_output(*output_id) {
+                    Some(output) => {
+                        match  T::try_from(output) {
+                            Ok(output) => Ok(output),
+                            Err(_) => {
+                                // This should never happen. 
+                                //
+                                // We validated the output type when compiling the node.
+                                unreachable!()
+                            }
+                        }
+                    },
+                    None => Err(EvalError::NoOutput {
+                        node_id: node.node_id,
+                        output_id: *output_id,
+                    }),
+                }
+            },
+        }
     }
 }
 
@@ -71,17 +103,41 @@ pub trait GetOutputDefinition {
         Self: Sized;
 }
 
-pub struct Output<T> {
-    pub value: RefCell<Option<T>>,
+pub trait GetOutputValue {
+    fn get_output_value(&self) -> Option<TaggedValue>;
 }
+
+pub struct Output<T> {
+    pub value: Option<T>,
+}
+
+impl<T> Output<T>
+where 
+    T: Value,
+{
+    pub fn set(&mut self, value: T) {
+        self.value = Some(value);
+    }
+}
+
 
 impl<T> Default for Output<T> {
     fn default() -> Self {
         Self {
-            value: RefCell::new(None),
+            value: None,
         }
     }
 }
+
+impl<T> GetOutputValue for Output<T>
+where 
+    T: Value,
+{
+    fn get_output_value(&self) -> Option<TaggedValue> {
+        self.value.clone().map(|value| value.into())
+    }
+}
+
 
 impl<T> GetOutputDefinition for Output<T> 
 where 
@@ -99,38 +155,33 @@ pub struct EvalContext;
 /// 
 /// Handles internal mutability of the node.
 #[derive(Clone)]
-pub struct NodeCell(Rc<RefCell<dyn Node>>);
+pub struct NodeRef {
+    node_id: NodeId,
+    node: Rc<RefCell<dyn Node>>,
+}
 
-impl NodeCell {
-    pub fn new(node: impl Node + 'static) -> Self {
-        Self(Rc::new(RefCell::new(node)))
-    }
-
-    pub fn eval(&self, ctx: &EvalContext) -> Result<(), ()> {
-        self.0.borrow_mut().eval(ctx)
-    }
-
-    pub fn get_output_ref(&self, output_id: OutputId) -> Option<Ref<dyn Any>> {
-        let borrow = self.0.borrow();
-
-        // Short-cut the borrow.
-        if borrow.get_output_ref(output_id).is_none() {
-            return None;
+impl NodeRef {
+    pub fn new(node_id: NodeId, node: impl Node + 'static) -> Self {
+        Self {
+            node_id,
+            node: Rc::new(RefCell::new(node)),
         }
+    }
 
-        Some(Ref::map(borrow, |node| {
-            let output = node.get_output_ref(output_id);
-            
-            // SAFETY: We know the output is not None because we checked earlier.
-            unsafe { &*output.unwrap_unchecked() }
-        }))
+    pub fn eval(&self, ctx: &EvalContext) -> Result<(), EvalError> {
+        self.node.borrow_mut().eval(ctx)
+    }
+
+    pub fn get_output(&self, output_id: OutputId) -> Option<TaggedValue> {
+        let borrow = self.node.borrow();
+        borrow.get_output(output_id)
     }
 }
 
 /// The context for compiling a graph.
 pub struct CompilationContext<'a> {
     pub graph: &'a GraphBlueprint,
-    pub compiled: HashMap<NodeId, NodeCell>,
+    pub compiled: HashMap<NodeId, NodeRef>,
 }
 
 impl<'a> CompilationContext<'a> {
@@ -141,7 +192,7 @@ impl<'a> CompilationContext<'a> {
         }
     }
 
-    pub fn compile_node(&mut self, node_id: NodeId) -> Result<NodeCell, ()> {
+    pub fn compile_node(&mut self, node_id: NodeId) -> Result<NodeRef, ()> {
         // Check if the node is already compiled.
         if let Some(node) = self.compiled.get(&node_id) {
             return Ok(node.clone());
@@ -150,7 +201,7 @@ impl<'a> CompilationContext<'a> {
         let node = self.graph.get_node(node_id).ok_or(())?;
         let eval_node = match node.node_type().evaluation {
             EvaluationStrategy::Compile(compile_node_fn) => {
-                compile_node_fn(self, node)?
+                compile_node_fn(self, node_id, node)?
             },
         };
 
@@ -160,22 +211,31 @@ impl<'a> CompilationContext<'a> {
 }
 
 pub trait CompileNode {
-    fn compile_node(ctx: &mut CompilationContext, node: &NodeBlueprint) -> Result<NodeCell, ()>;
+    fn compile_node(ctx: &mut CompilationContext, node_id: NodeId, node: &NodeBlueprint) -> Result<NodeRef, ()>;
 }
 
 /// A function that compiles a node.
-pub type CompileNodeFn = fn(&mut CompilationContext, node: &NodeBlueprint) -> Result<NodeCell, ()>;
+pub type CompileNodeFn = fn(&mut CompilationContext, node_id: NodeId, node: &NodeBlueprint) -> Result<NodeRef, ()>;
 
 /// An evaluatable node in the node graph.
-pub trait Eval: GetOutputRef {
+pub trait Eval: GetOutput {
     /// Evaluate the node.
-    fn eval(&mut self, ctx: &EvalContext) -> Result<(), ()>;
+    fn eval(&mut self, ctx: &EvalContext) -> Result<(), EvalError>;
 }
 
 /// A node that can be evaluated and has outputs.
-pub trait Node: Eval + GetOutputRef {}
+pub trait Node: Eval + GetOutput {}
 
-pub trait GetOutputRef {
-    /// Get a reference to an output.
-    fn get_output_ref(&self, output_id: OutputId) -> Option<&dyn Any>;
+pub trait GetOutput {
+    /// Get an output out of the node.
+    fn get_output(&self, output_id: OutputId) -> Option<TaggedValue>;
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum EvalError {
+    #[error("The node {node_id:?} has no output with the given id {output_id}.")]
+    NoOutput {
+        node_id: NodeId,
+        output_id: OutputId,
+    },
 }

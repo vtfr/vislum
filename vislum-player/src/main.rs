@@ -1,53 +1,43 @@
 use std::{error::Error, rc::Rc};
 
-use vislum_op::{eval::{Node, EvalContext, Output, Single}, prelude::*};
+use vislum_op::{eval::{CompilationContext, Eval, EvalContext, EvalError, Output, Single}, prelude::*};
 
 #[derive(Node)]
 struct Banana {
-    #[input]
+    #[input(assignment(CONSTANT))]
     a: Single<f32>,
-    #[input]
+    #[input(assignment(CONSTANT))]
     b: Single<f32>,
     #[output]
     c: Output<f32>,
 }
 
-impl Node for Banana {
-    fn eval(&mut self, ctx: &EvalContext) -> Result<(), ()> {
-        todo!()
+impl Eval for Banana {
+    fn eval(&mut self, ctx: &EvalContext) -> Result<(), EvalError> {
+        let a = self.a.eval(ctx)?;
+        let b = self.b.eval(ctx)?;
+        self.c.set(a + b);
+        Ok(())
     }
 }
 
 fn main() -> Result<(), Box<dyn Error>>{
-    // let add_node_type = Rc::new(NodeType::new(
-    //     NodeTypeId::new("Add"),
-    //     vec![
-    //         InputDefinition::new("a", &f32::INFO, InputCardinality::Single, AssignmentTypes::CONSTANT | AssignmentTypes::CONNECTION),
-    //         InputDefinition::new("b", &f32::INFO, InputCardinality::Single, AssignmentTypes::CONSTANT),
-    //     ],
-    //     vec![
-    //         OutputDefinition::new("c", &f32::INFO),
-    //     ],
-    // ));
+    let mut registry = NodeTypeRegistry::new();
+    <Banana as vislum_op::node_type::RegisterNodeType>::register_node_type(&mut registry);
 
-    // let mut graph = GraphBlueprint::new();
-    // let node_id1 = graph.add_node_of_type(add_node_type.clone());
-    // let node_id2 = graph.add_node_of_type(add_node_type.clone());
+    let banana_type = registry.get("Banana").unwrap();
 
-    // dbg!(graph.can_connect(node_id1, 0, Connection::new(node_id2, 0)));
+    let mut graph = GraphBlueprint::new();
+    let node_id = graph.add_node_of_type(banana_type.clone());
+    graph.assign_constant(node_id, 0, TaggedValue::Float(1.0))?;
+    graph.assign_constant(node_id, 1, TaggedValue::Float(2.0))?;
 
-    // graph.connect(
-    //     node_id1, 
-    //     0, 
-    //     ConnectionPlacement::End, 
-    //     Connection::new(node_id2, 0),
-    // )?;
+    let mut ctx = CompilationContext::new(&graph);
+    let node = ctx.compile_node(node_id).unwrap();
 
-    // graph.assign_constant(node_id1, 0, TaggedValue::Float(1.0))?;
-    // let node = graph.get_node(node_id1).unwrap();
-    // let (_, input_def) = node.get_input_with_def(0).unwrap();
+    node.eval(&EvalContext)?;
 
-    // println!("{:?}", input_def.flags());
+    println!("{:?}", node.get_output(0));
 
     Ok(())
 }
