@@ -3330,6 +3330,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vislum-math"
+version = "0.1.0"
+dependencies = [
+ "cgmath",
+]
+
+[[package]]
 name = "vislum-op"
 version = "0.1.0"
 dependencies = [
@@ -3342,6 +3349,7 @@ dependencies = [
  "smallbox",
  "thiserror 2.0.16",
  "uuid",
+ "vislum-math",
  "vislum-op-macros",
  "vislum-system",
 ]

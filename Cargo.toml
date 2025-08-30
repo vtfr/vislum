@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["vislum-player", "vislum-editor", "vislum-render", "vislum_asset", "vislum-runtime", "vislum-op", "vislum-system", "vislum-op-std"]
+members = ["vislum-player", "vislum-editor", "vislum-render", "vislum_asset", "vislum-runtime", "vislum-op", "vislum-system", "vislum-op-std", "vislum-math"]
 
 [workspace.dependencies]
 derive_more = { version = "2", features = ["full"] }

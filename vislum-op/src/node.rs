@@ -1,6 +1,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use thiserror::Error;
+use vislum_math::{Vector2, Vector2I};
 
 use crate::{compile::OutputDefinition, new_uuid_type, node_type::{InputCardinality, InputDefinition, NodeType}, value::TaggedValue};
 
@@ -52,14 +53,27 @@ impl InputBlueprint {
 }
 
 pub struct NodeBlueprint {
-    pub(crate) node_type: Rc<NodeType>,
-    pub(crate) inputs: Vec<InputBlueprint>,
+    pub node_type: Rc<NodeType>,
+    pub inputs: Vec<InputBlueprint>,
+    pub position: Vector2I,
 }
 
 impl NodeBlueprint {
     #[inline]
     pub fn new(node_type: Rc<NodeType>) -> Self {
         node_type.instantiate()
+    }
+
+    #[inline]
+    pub fn new_with_position(node_type: Rc<NodeType>, position: Vector2I) -> Self {
+        let mut node = Self::new(node_type);
+        node.position = position;
+        node
+    }
+
+    #[inline]
+    pub fn position(&self) -> Vector2I {
+        self.position
     }
 
     /// Returns a reference to the node type.
@@ -74,6 +88,11 @@ impl NodeBlueprint {
     pub fn get_input(&self, input_id: InputId) -> Result<&InputBlueprint, NodeError> {
         self.inputs.get(input_id)
             .ok_or(NodeError::InputNotFound(input_id))
+    }
+
+    #[inline]
+    pub fn set_position(&mut self, position: Vector2I) {
+        self.position = position;
     }
 
     /// Assigns a constant value to an input.

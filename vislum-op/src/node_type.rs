@@ -62,6 +62,7 @@ impl NodeType {
         NodeBlueprint {
             node_type: self.clone(),
             inputs,
+            position: Default::default(),
         }
     }
 
