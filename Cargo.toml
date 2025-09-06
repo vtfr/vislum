@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["vislum-player", "vislum-editor", "vislum-render", "vislum_asset", "vislum-runtime", "vislum-op", "vislum-system", "vislum-op-std", "vislum-math"]
 
 [workspace.dependencies]
@@ -13,3 +13,4 @@ slotmap = { version = "1.0", features = ["serde"] }
 uuid = { version = "1.18.0", features = ["v4", "serde"] }
 smallbox = { version = "0.8.8" }
 bitflags = "2.9.3"
+wgpu = "^25.0.0"

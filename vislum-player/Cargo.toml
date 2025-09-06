@@ -6,5 +6,10 @@ edition = "2024"
 [dependencies]
 # vislum-asset = { path = "../vislum_asset" }
 vislum-op = { path = "../vislum-op" }
+vislum-render = { path = "../vislum-render" }
 serde_json = { workspace = true }
 serde = { workspace = true }
+winit = "0.30.12"
+pollster = "0.4.0"
+wgpu = { workspace = true }
+anyhow = "1.0.99"

@@ -3,9 +3,10 @@ use std::{cell::RefCell, collections::{HashMap, HashSet}};
 mod commands;
 mod node;
 mod pin;
+mod introspect;
 
 use eframe::{
-    egui::{self, Color32, InnerResponse, Rect, Scene, Sense, Stroke, UiBuilder, Widget},
+    egui::{self, Color32, DragPanButtons, InnerResponse, Pos2, Rect, Scene, Sense, SidePanel, Stroke, UiBuilder, Widget},
     epaint::RectShape,
 };
 use slotmap::SecondaryMap;
@@ -14,15 +15,20 @@ use vislum_op::{prelude::*, system::NodeGraphSystem};
 use crate::{
     command::{CommandDispatcher, History},
     graph::{
-        self, commands::{AddNodeCommand, DeleteNodesCommand, MoveNodesCommand}, node::{NodeAction, NodeInputVirtualSlotKey, NodeOutputKey, NodeView}
+        self, commands::{AddNodeCommand, DeleteNodesCommand, MoveNodesCommand}, introspect::IntrospectView, node::{NodeAction, NodeInputVirtualSlotKey, NodeOutputKey, NodeView}
     }, util::IntoVector2I,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 enum Interaction {
     /// The user isn't doing anything interesting.
     #[default]
     Hover,
+    /// The user is selecting a region.
+    Selecting {
+        start_pos: Pos2,
+        end_pos: Pos2,
+    },
     /// The user is performing a connection.
     Connecting,
 }
@@ -76,6 +82,7 @@ pub struct GraphView {
     opened_graph: OpenedGraph,
     graph_element_positioning: GraphElementPositioning,
     interaction: Interaction,
+    introspecting: Option<NodeId>,
     scene_rect: Rect,
 }
 
@@ -86,6 +93,7 @@ impl Default for GraphView {
             graph_element_positioning: Default::default(),
             scene_rect: Rect::ZERO,
             interaction: Default::default(),
+            introspecting: None,
         }
     }
 }
@@ -100,6 +108,17 @@ impl GraphView {
         // Clear the graph element positioning.
         self.graph_element_positioning.clear();
 
+        if let Some(node_id) = self.introspecting {
+            SidePanel::right("introspect")
+            .resizable(false)
+            .exact_width(400.0)
+            .show_inside(ui, |ui| {
+                let graph = self.opened_graph.resolve(&context.op_system).unwrap();
+
+                IntrospectView::new(graph, node_id, context.dispatcher).ui(ui);
+            });
+        }
+
         // Main central panel.
         egui::containers::CentralPanel::default().show_inside(ui, |ui| {
             self.nodes_ui(ui, context);
@@ -109,7 +128,9 @@ impl GraphView {
     fn nodes_ui(&mut self, ui: &mut egui::Ui, context: GraphViewContext) {
         let mut node_responses = Vec::new();
 
-        let scene_response = Scene::new().show(ui, &mut self.scene_rect, |ui| {
+        let scene_response = Scene::new()
+            .drag_pan_buttons(DragPanButtons::MIDDLE)
+            .show(ui, &mut self.scene_rect, |ui| {
             let graph = self.opened_graph.resolve(&context.op_system).unwrap();
 
             for (node_id, node) in graph.nodes.iter() {
@@ -136,6 +157,9 @@ impl GraphView {
                         context.dispatcher.dispatch_dyn(Box::new(DeleteNodesCommand {
                             node_ids: HashSet::from([node_response.node_id]),
                         }));
+                    }
+                    NodeAction::TitleDoubleClicked => {
+                        self.introspecting = Some(node_response.node_id);
                     }
                     _ => {}
                 }

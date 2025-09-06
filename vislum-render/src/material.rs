@@ -1,32 +1,71 @@
-use cgmath::{Vector3, Vector4};
+use encase::ShaderType;
+use vislum_math::{Vector3, Vector4};
+use vislum_system::System;
 
-#[derive(Debug, Clone)]
-pub enum MaterialBinding {
-    Vector3(String, Vector3<f32>),
-    Vector4(String, Vector4<f32>),
-    Scalar(String, f32),
+use crate::{bind_group::BindGroup, resource::{Handle, IntoResourceId, ResourceId, RenderResourceStorage}, storage::Uniform, types::RenderDevice};
+
+#[derive(ShaderType)]
+pub struct MaterialUniformData {
+    color: [f32; 3],
 }
 
-pub struct MaterialDefinition {
-    pub base_color: Vector4<f32>,
-    pub roughness: f32,
-    pub metallic: f32,
-    pub bindings: Vec<MaterialBinding>,
+// /// A color or texture.
+// pub enum ColorOrTexture {
+//     Color(Vector4),
+//     Texture(Handle<()>),
+// }
+
+// /// A base material.
+// pub struct PbrProperties {
+//     pub albedo: ColorOrTexture,
+//     pub roughness: ColorOrTexture,
+//     pub normal: ColorOrTexture,
+// }
+
+pub struct RenderMaterial {
+    pub color: Vector3,
+    // /// The base material.
+    // ///
+    // /// All materials are PBR materials.
+    // pub pbr: PbrProperties,
+
+    // The uniform data for the material.
+    // pub uniform: Uniform<MaterialUniformData>,
+
+    // The bind group for the material.
+    // 
+    // Contains both the uniform data and the texture data, along with
+    // the samplers.
+    // pub bind_group: BindGroup,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum MaterialBindingArchetype {
-    Vector3,
-    Vector4,
-    Scalar,
+pub struct MaterialDescriptor {
+    pub color: Vector3,
 }
 
-/// A high-level representation of a material archetype.
-///
-/// Used to batch objects together when rendering them.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MaterialArchetypeCacheKey {
-    pub bindings: Vec<MaterialBindingArchetype>,
+#[derive(System)]
+pub struct MaterialSystem {
+    device: RenderDevice,
+    materials: RenderResourceStorage<RenderMaterial>,
 }
 
-pub struct MaterialManager {}
+impl MaterialSystem {
+    pub fn new(device: RenderDevice) -> Self {
+        Self { device, materials: RenderResourceStorage::new() }
+    }
+
+    /// Creates a new material.
+    pub fn create(&mut self, descriptor: MaterialDescriptor) -> Handle<RenderMaterial> {
+        let material = RenderMaterial {
+            color: descriptor.color,
+        };
+
+        self.materials.insert(material)
+    }
+
+    /// Gets a material by its ID.
+    pub fn get(&self, id: impl IntoResourceId<RenderMaterial>) -> Option<&RenderMaterial> {
+        let id = id.into_resource_id();
+        self.materials.get(id)
+    }
+}

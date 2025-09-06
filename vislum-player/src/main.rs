@@ -1,55 +1,172 @@
-use std::error::Error;
+use std::{error::Error, sync::Arc};
 
-use vislum_op::{compile::CompilationContext, eval::{Eval, EvalContext, EvalError, Multiple, Output, Single}, prelude::*, system::NodeGraphSystem};
+use vislum_op::{
+    compile::CompilationContext,
+    eval::{Eval, EvalContext, EvalError, Multiple, Output, Single},
+    prelude::*,
+    system::NodeGraphSystem,
+};
+use winit::{
+    application::ApplicationHandler,
+    dpi::PhysicalSize,
+    event,
+    event_loop::{EventLoop, EventLoopProxy},
+    window::{Fullscreen, Window, WindowAttributes},
+};
 
-#[derive(Node)]
-struct SumAll {
-    #[input]
-    b: Multiple<f32>,
-    #[output]
-    c: Output<f32>,
+use crate::wgpu_state::WgpuState;
+
+mod wgpu_state;
+
+#[derive(Default)]
+pub enum PlayerState {
+    #[default]
+    Uninitialized,
+    /// The window has been created, but the runtime has not been initialized
+    WindowCreated { window: Arc<Window> },
+    /// The runtime has been initialized
+    WgpuInitialized {
+        wgpu: WgpuState,
+        window: Arc<Window>,
+    },
 }
 
-impl Eval for SumAll {
-    fn eval(&mut self, ctx: &EvalContext) -> Result<(), EvalError> {
-        let values = self.b.eval(ctx)?.into_iter().sum::<f32>();
-        self.c.set(values as f32);
-        Ok(())
+impl PlayerState {
+    pub fn window(&self) -> Option<&Window> {
+        match self {
+            PlayerState::WindowCreated { window } => Some(window),
+            PlayerState::WgpuInitialized { window, .. } => Some(window),
+            PlayerState::Uninitialized => None,
+        }
+    }
+
+    pub fn wgpu(&self) -> Option<&WgpuState> {
+        match self {
+            PlayerState::WgpuInitialized { wgpu, .. } => Some(wgpu),
+            _ => None,
+        }
     }
 }
 
-#[derive(Node)]
-struct Constant {
-    #[input]
-    value: Single<f32>,
-    #[output]
-    constant: Output<f32>,
+pub struct Player {
+    proxy: EventLoopProxy<PlayerEvent>,
+    state: PlayerState,
 }
 
-impl Eval for Constant {
-    fn eval(&mut self, ctx: &EvalContext) -> Result<(), EvalError> {
-        let value = self.value.eval(ctx)?;
-        self.constant.set(value);
-        Ok(())
+impl Player {
+    fn new(proxy: EventLoopProxy<PlayerEvent>) -> Self {
+        Self {
+            proxy,
+            state: PlayerState::Uninitialized,
+        }
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>>{
-    let mut system = NodeGraphSystem::default();
-    system.register_node_types::<(SumAll, Constant)>();
+impl Player {
+    fn render(&self) {
+        // Request a redraw of the window
+        if let Some(window) = self.state.window() {
+            window.request_redraw();
+        }
 
-    let constant_node_id = system.add_node("Constant");
-    system.assign_constant(constant_node_id, 0, TaggedValue::Float(1.0))?;
+        if let PlayerState::WgpuInitialized { wgpu, .. } = &self.state {
+            let current_texture = wgpu.surface.get_current_texture().unwrap();
+            let view = current_texture
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            let mut encoder = wgpu
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-    let sum_all_node_id = system.add_node("SumAll");
-    system.connect(sum_all_node_id, 0, ConnectionPlacement::End, Connection::new(constant_node_id, 0))?;
+            {
+                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    label: None,
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+            }
 
-    let result = system.eval(&EvalContext, sum_all_node_id)?;
-    println!("{:?}", result.get_output(0));
-    
-    system.assign_constant(constant_node_id, 0, TaggedValue::Float(6.0))?;
-    let result = system.eval(&EvalContext, sum_all_node_id)?;
-    println!("{:?}", result.get_output(0));
+            wgpu.queue.submit(std::iter::once(encoder.finish()));
+            current_texture.present();
+        }
+    }
+}
+
+impl ApplicationHandler<PlayerEvent> for Player {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        if let PlayerState::Uninitialized = self.state {
+            let window_attributes = WindowAttributes::default()
+                .with_active(true)
+                .with_visible(true)
+                .with_title("Vislum Player")
+                .with_resizable(false)
+                .with_inner_size(PhysicalSize::new(800, 600))
+                .with_fullscreen(None);
+
+            // Create the window
+            let window = event_loop.create_window(window_attributes).unwrap();
+            let window = Arc::new(window);
+
+            self.state = PlayerState::WindowCreated {
+                window: window.clone(),
+            };
+
+            // Initialize the runtime.
+            let wgpu = pollster::block_on(WgpuState::new(window.clone())).unwrap();
+
+            self.state = PlayerState::WgpuInitialized {
+                window: window.clone(),
+                wgpu,
+            };
+        }
+    }
+
+    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: PlayerEvent) {}
+
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        _window_id: winit::window::WindowId,
+        event: event::WindowEvent,
+    ) {
+        match &event {
+            event::WindowEvent::Resized(_physical_size) => {
+                // TODO
+            }
+            event::WindowEvent::RedrawRequested => {
+                self.render();
+            }
+            event::WindowEvent::CloseRequested => {
+                event_loop.exit();
+            }
+            _ => {}
+        }
+    }
+}
+
+pub enum PlayerEvent {
+    WindowCreated,
+}
+
+fn run() -> anyhow::Result<()> {
+    let event_loop: EventLoop<PlayerEvent> = EventLoop::with_user_event().build()?;
+
+    let proxy = event_loop.create_proxy();
+
+    event_loop.run_app(&mut Player::new(proxy))?;
 
     Ok(())
+}
+
+fn main() {
+    run().unwrap();
 }

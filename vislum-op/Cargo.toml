@@ -16,3 +16,4 @@ uuid = { workspace = true }
 vislum-math = { path = "../vislum-math" }
 vislum-op-macros = { path = "macros" }
 vislum-system = { path = "../vislum-system" }
+vislum-render = { path = "../vislum-render" }

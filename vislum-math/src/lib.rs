@@ -1,7 +1,7 @@
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 macro_rules! impl_vector {
-    ($ident:ident; $ty:ty; $constructor:ident; $inner:path; $($field:ident),*) => {
+    ($ident:ident; $components:expr; $ty:ty; $constructor:ident; $inner:path; $($field:ident),*) => {
         #[derive(Debug, Clone, Copy, PartialEq)]
         #[repr(transparent)]
         pub struct $ident {
@@ -62,13 +62,25 @@ macro_rules! impl_vector {
                 Self { inner: self.inner * rhs }
             }
         }
+
+        impl Into<[$ty; $components]> for $ident {
+            fn into(self) -> [$ty; $components] {
+                self.inner.into()
+            }
+        }
+
+        impl From<[$ty; $components]> for $ident {
+            fn from(value: [$ty; $components]) -> Self {
+                Self { inner: <$inner>::from(value) }
+            }
+        }
     };
 
     (@zero_field $field:ident) => { Default::default() };
 }
 
-impl_vector!(Vector4; f32; vec4; cgmath::Vector4<f32>; x, y, z, w);
-impl_vector!(Vector3; f32; vec3; cgmath::Vector3<f32>; x, y, z);
-impl_vector!(Vector2; f32; vec2; cgmath::Vector2<f32>; x, y);
+impl_vector!(Vector4; 4; f32; vec4; cgmath::Vector4<f32>; x, y, z, w);
+impl_vector!(Vector3; 3; f32; vec3; cgmath::Vector3<f32>; x, y, z);
+impl_vector!(Vector2; 2; f32; vec2; cgmath::Vector2<f32>; x, y);
 
-impl_vector!(Vector2I; i32; vec2i; cgmath::Vector2<i32>; x, y);
+impl_vector!(Vector2I; 2; i32; vec2i; cgmath::Vector2<i32>; x, y);
