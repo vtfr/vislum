@@ -1,8 +1,11 @@
 use encase::ShaderType;
 use vislum_math::{Vector3, Vector4};
-use vislum_system::System;
+use vislum_system::Resource;
 
-use crate::{bind_group::BindGroup, resource::{Handle, IntoResourceId, ResourceId, RenderResourceStorage}, storage::Uniform, types::RenderDevice};
+use crate::cache::bind_group::BindGroup;
+use crate::cache::storage::{Handle, IntoResourceId, ResourceId, RenderResourceStorage};
+use crate::cache::storage::Uniform;
+use crate::cache::types::RenderDevice;
 
 #[derive(ShaderType)]
 pub struct MaterialUniformData {
@@ -43,7 +46,7 @@ pub struct MaterialDescriptor {
     pub color: Vector3,
 }
 
-#[derive(System)]
+#[derive(Resource)]
 pub struct MaterialSystem {
     device: RenderDevice,
     materials: RenderResourceStorage<RenderMaterial>,

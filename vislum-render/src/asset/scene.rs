@@ -1,10 +1,8 @@
 
 use vislum_system::Resource;
 
-use crate::{
-    mesh::RenderMesh,
-    resource::{Handle, IntoResourceId, ResourceId, ResourceStorage},
-};
+use crate::resource::mesh::Mesh;
+use crate::cache::storage::{Handle, IntoResourceId, ResourceId, ResourceStorage};
 
 pub struct Scene {
     pub objects: Vec<SceneObject>,
@@ -54,7 +52,7 @@ pub enum SceneCommand {
 
 #[derive(Debug, Clone)]
 pub struct SceneObject {
-    pub mesh: Handle<RenderMesh>,
+    pub mesh: Handle<Mesh>,
 }
 
 /// A manager for scenes.

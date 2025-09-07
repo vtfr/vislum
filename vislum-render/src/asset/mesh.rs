@@ -1,22 +1,21 @@
 use vislum_system::Resource;
 use wgpu::util::DeviceExt;
 
-use crate::types::RenderDevice;
+use crate::cache::types::RenderDevice;
+use crate::cache::storage::{Handle, IntoResourceId, ResourceStorage};
 
-use crate::resource::{Handle, IntoResourceId, ResourceStorage};
-
-pub struct RenderMeshDescriptor {
+pub struct MeshDescriptor {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
 }
 
-pub struct RenderMesh {
+pub struct Mesh {
     vertices: Vec<Vertex>,
     indices: Vec<u32>,
     buffer: wgpu::Buffer,
 }
 
-impl RenderMesh {
+impl Mesh {
     /// Gets the vertices of the mesh.
     pub fn vertices(&self) -> &[Vertex] {
         &self.vertices
@@ -40,7 +39,7 @@ pub struct Vertex {
 #[derive(Resource)]
 pub struct MeshManager {
     device: RenderDevice,
-    meshes: ResourceStorage<RenderMesh>,
+    meshes: ResourceStorage<Mesh>,
 }
 
 impl MeshManager {
@@ -48,21 +47,21 @@ impl MeshManager {
         Self { device, meshes: ResourceStorage::new() }
     }
 
-    pub fn create(&mut self, descriptor: RenderMeshDescriptor) -> Handle<RenderMesh> {
+    pub fn create(&mut self, descriptor: MeshDescriptor) -> Handle<Mesh> {
         let buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Mesh Buffer"),
             contents: &[],
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        self.meshes.insert(RenderMesh {
+        self.meshes.insert(Mesh {
             vertices: descriptor.vertices,
             indices: descriptor.indices,
             buffer,
         })
     }
     
-    pub fn get(&self, id: impl IntoResourceId<RenderMesh>) -> Option<&RenderMesh> {
+    pub fn get(&self, id: impl IntoResourceId<Mesh>) -> Option<&Mesh> {
         let id = id.into_resource_id();
         self.meshes.get(id)
     }

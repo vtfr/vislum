@@ -144,9 +144,10 @@ impl Resources {
     }
 
     /// Gets a resource by type, inserting a default resource if it is not found.
-    pub fn get_or_insert_default<T>(&self) -> Res<'_, T>
+    pub fn get_or_insert_with<T, F>(&self, f: F) -> Res<'_, T>
     where
-        T: Resource + Default,
+        T: Resource, 
+        F: FnOnce() -> T
     {
         // SAFETY: We only insert a new resource if it is not found, so no borrows to the
         // previous resource can be invalidated (as the resource does not exist). Moreover, the
@@ -156,14 +157,15 @@ impl Resources {
 
         inner
             .entry(TypeId::of::<T>())
-            .or_insert_with(|| ErasedResourceCell::new(T::default()))
+            .or_insert_with(|| ErasedResourceCell::new(f()))
             .get_downcasted_ref::<T>()
     }
 
     /// Gets a mutable resource by type, inserting a default resource if it is not found.
-    pub fn get_mut_or_insert_default<T>(&self) -> ResMut<'_, T>
+    pub fn get_mut_or_insert_with<T, F>(&self, f: F) -> ResMut<'_, T>
     where
-        T: Resource + Default,
+        T: Resource, 
+        F: FnOnce() -> T
     {
         // SAFETY: We only insert a new resource if it is not found, so no borrows to the
         // previous resource can be invalidated (as the resource does not exist). Moreover, the
@@ -173,7 +175,7 @@ impl Resources {
 
         inner
             .entry(TypeId::of::<T>())
-            .or_insert_with(|| ErasedResourceCell::new(T::default()))
+            .or_insert_with(|| ErasedResourceCell::new(f()))
             .get_downcasted_mut::<T>()
     }
 

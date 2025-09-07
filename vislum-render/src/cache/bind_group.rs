@@ -1,15 +1,16 @@
 use std::{borrow::Cow, collections::HashMap};
 
-use vislum_system::System;
+use vislum_system::Resource;
 
-use crate::{types::RenderDevice, wrap_wgpu_with_atomic_id};
+use crate::cache::types::RenderDevice;
+use crate::wrap_wgpu_with_atomic_id;
 
 wrap_wgpu_with_atomic_id! {
     /// A bind group layout.
     pub struct BindGroupLayout(BindGroupLayoutId): wgpu::BindGroupLayout;
 }
 
-#[derive(System)]
+#[derive(Resource)]
 pub struct BindGroupLayoutCache {
     device: RenderDevice,
     descriptors: HashMap<Vec<wgpu::BindGroupLayoutEntry>, BindGroupLayout>,

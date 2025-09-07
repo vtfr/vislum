@@ -1,12 +1,7 @@
 use std::{error::Error, sync::Arc};
 
-use vislum_op::{
-    compile::CompilationContext,
-    eval::{Eval, EvalContext, EvalError, Multiple, Output, Single},
-    prelude::*,
-    system::NodeGraphSystem,
-};
-use vislum_render::{mesh::{RenderMeshDescriptor, Vertex}, resource::Handle, scene::{Scene, SceneCommand, SceneObject}, system::{ForwardRenderPass, RenderSystem, ScreenBlitPass}, texture::{Texture, TextureDescriptor, TextureFormat}};
+use vislum_render::{MeshManager, RenderPassCollector, SceneManager, ScreenRenderTarget, TextureManager, mesh::{MeshDescriptor, Vertex}, pass::{ScreenBlitPass}, scene::{Scene, SceneCommand, SceneObject}, texture::{Texture, TextureDescriptor, TextureFormat}};
+use vislum_render::cache::storage::Handle;
 use vislum_runtime::Runtime;
 use winit::{
     application::ApplicationHandler,
@@ -66,16 +61,19 @@ impl Player {
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
 
-            let mut render_system = runtime.get_resource_mut::<RenderSystem>();
+            let mut render_pass_collector = runtime.get_resource_mut::<RenderPassCollector>();
             
             // Do render the scene.
-            render_system.render(vec![
-                Box::new(ForwardRenderPass { 
-                    scene: testing_data.scene.clone(), 
-                    color_texture: testing_data.render_texture.clone(),
-                }),
-                Box::new(ScreenBlitPass::new(testing_data.render_texture.clone())),
-            ], &view, current_texture.texture.format());
+            // render_pass_collector.add_pass(Arc::new(ForwardRenderPass { 
+            //     scene: testing_data.scene.clone(), 
+            //     color_texture: testing_data.render_texture.clone(),
+            // }));
+
+            render_pass_collector.add_pass(Arc::new(ScreenBlitPass::new(testing_data.render_texture.clone())));
+            render_pass_collector.render(&runtime.resources, &ScreenRenderTarget {
+                view: view,
+                format: current_texture.texture.format(),
+            });
 
             // Present the texture.
             current_texture.present();
@@ -102,16 +100,18 @@ impl ApplicationHandler<PlayerEvent> for Player {
             let runtime = Runtime::new(wgpu.device.clone(), wgpu.queue.clone());
 
             // TESTING DATA
-            let mut render_system = runtime.get_resource_mut::<RenderSystem>();
+            let mut texture_manager = runtime.get_resource_mut::<TextureManager>();
+            let mut mesh_manager = runtime.get_resource_mut::<MeshManager>();
+            let mut scene_manager = runtime.get_resource_mut::<SceneManager>();
 
-            let color_texture = render_system.create_texture(TextureDescriptor {
+            let color_texture = texture_manager.create(TextureDescriptor {
                 format: TextureFormat::Rgba8Unorm,
                 data: None,
                 width: 800,
                 height: 600,
             });
 
-            let mesh = render_system.create_mesh(RenderMeshDescriptor {
+            let mesh = mesh_manager.create(MeshDescriptor {
                 vertices: vec![
                     Vertex { position: [-0.5, -0.5, 0.0] },
                     Vertex { position: [0.5, -0.5, 0.0] }, 
@@ -120,13 +120,15 @@ impl ApplicationHandler<PlayerEvent> for Player {
                 indices: vec![0, 1, 2],
             });
 
-            let scene = render_system.create_scene_with_commands(vec![
+            let scene = scene_manager.create_with_commands(vec![
                 SceneCommand::AddObject(SceneObject {
                     mesh,
                 }),
             ]);
 
-            drop(render_system);
+            drop(texture_manager);
+            drop(mesh_manager);
+            drop(scene_manager);
 
             self.state = PlayerState::Ready {
                 window: window.clone(),

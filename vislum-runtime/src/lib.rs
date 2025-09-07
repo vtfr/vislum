@@ -1,11 +1,11 @@
 use vislum_op::system::NodeGraphSystem;
+use vislum_render::{MeshManager, RenderPassCollector, SceneManager, ShaderManager, TextureManager};
 use vislum_render::types::{RenderDevice, RenderQueue};
-use vislum_render::system::RenderSystem;
 use vislum_system::{ResMut, Res, Resource, Resources};
 
 /// The runtime for the vislum engine.
 pub struct Runtime {
-    resources: Resources,
+    pub resources: Resources,
 }
 
 impl Runtime {
@@ -14,14 +14,21 @@ impl Runtime {
         
         // Insert the default resources.
         resources.insert(NodeGraphSystem::default());
-        resources.insert(RenderSystem::new(device, queue));
+        resources.insert(TextureManager::new(device.clone(), queue.clone()));
+        resources.insert(MeshManager::new(device.clone()));
+        resources.insert(ShaderManager::new(device.clone()));
+        resources.insert(SceneManager::new());
+        resources.insert(RenderPassCollector::new());
+        resources.insert(device);
+        resources.insert(queue);
+
 
         Self {
             resources,
         }
     }
 
-    /// Gets a system by type.
+    /// Gets a resource by type.
     pub fn get_resource<T>(&self) -> Res<'_, T>
     where
         T: Resource, 

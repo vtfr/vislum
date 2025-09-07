@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
-use crate::{resource::{Handle, IntoResourceId, ResourceStorage}, types::RenderDevice};
+use crate::cache::storage::{Handle, IntoResourceId, ResourceStorage};
+use crate::cache::types::RenderDevice;
 
 /// A manager for managing shaders. 
 pub struct ShaderManager {

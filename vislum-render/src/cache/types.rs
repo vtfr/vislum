@@ -50,11 +50,13 @@ macro_rules! wrap_wgpu {
 
 wrap_wgpu! {
     /// A device.
+    #[derive(Resource)]
     pub struct RenderDevice: wgpu::Device;
 }
 
 wrap_wgpu! {
     /// A queue.
+    #[derive(Resource)]
     pub struct RenderQueue: wgpu::Queue;
 }
 
@@ -134,3 +136,9 @@ macro_rules! wrap_wgpu_with_atomic_id {
 pub mod wgpu {
     pub use wgpu::*;
 }
+
+use vislum_system::Resource;
+
+// Re-export macros
+pub use crate::wrap_wgpu_with_atomic_id;
+pub use crate::create_atomic_id;

@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use vislum_system::Resource;
 
-use crate::resource::ResourceId;
-use crate::shader::ShaderModule;
-use crate::types::RenderDevice;
+use crate::resource::storage::ResourceId;
+use crate::asset::shader::ShaderModule;
+use crate::resource::types::RenderDevice;
 
 crate::create_atomic_id! {
     pub struct RenderPipelineId;

@@ -1,8 +1,7 @@
 use wgpu::util::DeviceExt;
 
-use crate::types::{RenderDevice, RenderQueue};
-
-use crate::resource::{Handle, IntoResourceId, ResourceStorage};
+use crate::cache::types::{RenderDevice, RenderQueue};
+use crate::cache::storage::{Handle, IntoResourceId, ResourceStorage};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextureFormat {
