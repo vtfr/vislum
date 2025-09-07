@@ -7,3 +7,4 @@ edition = "2024"
 vislum-asset = { path = "../vislum_asset" }
 vislum-op = { path = "../vislum-op"}
 vislum-system = { path = "../vislum-system"}
+vislum-render = { path = "../vislum-render"}

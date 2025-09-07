@@ -1,8 +1,9 @@
+use vislum_system::System;
 use wgpu::util::DeviceExt;
 
 use crate::types::RenderDevice;
 
-use crate::resource::{Handle, IntoResourceId, RenderResourceStorage};
+use crate::resource::{Handle, IntoResourceId, ResourceStorage};
 
 pub struct RenderMeshDescriptor {
     pub vertices: Vec<Vertex>,
@@ -38,14 +39,14 @@ pub struct Vertex {
     pub uv: [f32; 2],
 }
 
-pub struct MeshSystem {
+pub struct MeshManager {
     device: RenderDevice,
-    meshes: RenderResourceStorage<RenderMesh>,
+    meshes: ResourceStorage<RenderMesh>,
 }
 
-impl MeshSystem {
+impl MeshManager {
     pub fn new(device: RenderDevice) -> Self {
-        Self { device, meshes: RenderResourceStorage::new() }
+        Self { device, meshes: ResourceStorage::new() }
     }
 
     pub fn create(&mut self, descriptor: RenderMeshDescriptor) -> Handle<RenderMesh> {

@@ -3208,6 +3208,7 @@ dependencies = [
  "crossbeam",
  "encase",
  "slotmap",
+ "thiserror 2.0.16",
  "vislum-math",
  "vislum-system",
  "wgpu",
@@ -3219,6 +3220,7 @@ version = "0.1.0"
 dependencies = [
  "vislum-asset",
  "vislum-op",
+ "vislum-render",
  "vislum-system",
 ]
 

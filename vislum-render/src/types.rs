@@ -59,6 +59,28 @@ wrap_wgpu! {
 }
 
 #[macro_export]
+macro_rules! create_atomic_id {
+    {
+        $(#[$meta:meta])*
+        $vis:vis struct $name:ident;
+    } => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        $vis struct $name(u64);
+
+        impl $name {
+            pub fn new() -> Self {
+                static ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+                let id = ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                Self(id)
+            }
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! wrap_wgpu_with_atomic_id {
     {
         $(#[$meta:meta])*

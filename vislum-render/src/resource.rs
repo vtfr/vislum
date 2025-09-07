@@ -6,13 +6,19 @@ use slotmap::{DefaultKey, SlotMap};
 // A non-owning reference to a given resource.
 pub struct ResourceId<T> {
     key: DefaultKey,
-    phantom: PhantomData<T>,
+    phantom: PhantomData<fn() -> T>,
 }
 
 impl<T> ResourceId<T> {
     /// Creates a new resource ID.
     pub(crate) fn new(id: DefaultKey) -> Self {
         Self { key: id, phantom: Default::default() }
+    }
+}
+
+impl<T> std::fmt::Debug for ResourceId<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ResourceId<{}>({:?})", std::any::type_name::<T>(), self.key)
     }
 }
 
@@ -72,6 +78,12 @@ pub struct Handle<T> {
     inner: Arc<HandleInner<T>>,
 }
 
+impl<T> std::fmt::Debug for Handle<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Handle<{}>({:?})", std::any::type_name::<T>(), self.inner.id.key)
+    }
+}
+
 impl<T> Clone for Handle<T> {
     fn clone(&self) -> Self {
         Self {
@@ -111,13 +123,13 @@ impl<T> IntoResourceId<T> for Handle<T> {
 }
 
 /// A storage for resources.
-pub struct RenderResourceStorage<T> {
-    storage: SlotMap<DefaultKey, T>,
+pub struct ResourceStorage<T> {
     drop_tx: Sender<HandleDropEvent<T>>,
     drop_rx: Receiver<HandleDropEvent<T>>,
+    storage: SlotMap<DefaultKey, T>,
 }
 
-impl<T> RenderResourceStorage<T> {
+impl<T> ResourceStorage<T> {
     /// Creates a new resource storage.
     pub fn new() -> Self {
         let (drop_tx, drop_rx) = crossbeam::channel::unbounded();
@@ -158,9 +170,11 @@ impl<T> RenderResourceStorage<T> {
             receiver: &self.drop_rx,
         }
     }
-    
-    pub(crate) fn remove(&self, event: ResourceId<crate::mesh::RenderMesh>) -> Option<T> {
-        todo!()
+}
+
+impl<T> Default for ResourceStorage<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

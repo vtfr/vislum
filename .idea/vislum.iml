@@ -13,6 +13,14 @@
       <sourceFolder url="file://$MODULE_DIR$/vislum-graph/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/vislum-player/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/vislum-render/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vislum-math/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vislum-op-std/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vislum-op/macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vislum-op/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vislum-runtime/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vislum-system/macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vislum-system/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vislum_asset/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

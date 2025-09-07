@@ -12,3 +12,4 @@ crossbeam = { workspace = true }
 vislum-system = { path = "../vislum-system" }
 vislum-math = { path = "../vislum-math" }
 encase = "0.11.2"
+thiserror = { workspace = true }

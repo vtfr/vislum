@@ -2,16 +2,16 @@ use std::borrow::Cow;
 
 use vislum_system::System;
 
-use crate::{resource::{Handle, IntoResourceId, RenderResourceStorage}, types::RenderDevice};
+use crate::{resource::{Handle, IntoResourceId, ResourceStorage}, types::RenderDevice};
 
-/// A system for managing shader modules.
-#[derive(System)]
-pub struct ShaderModuleManager {
+/// A manager for managing shaders. 
+pub struct ShaderManager {
     device: RenderDevice,
-    modules: RenderResourceStorage<ShaderModule>,
+    modules: ResourceStorage<ShaderModule>,
 }
 
-pub struct ShaderModuleDescriptor<'a> {
+/// A descriptor for creating a shader.
+pub struct ShaderDescriptor<'a> {
     /// The source code of the shader module.
     pub source: Cow<'a, str>,
 
@@ -19,9 +19,8 @@ pub struct ShaderModuleDescriptor<'a> {
     pub entry_point: Cow<'a, str>,
 }
 
-#[derive(Debug, Clone)]
-pub enum ShaderModuleBinding {
-    Float(String, f32)
+crate::create_atomic_id! {
+    pub struct ShaderId;
 }
 
 pub struct ShaderModule {
@@ -31,24 +30,24 @@ pub struct ShaderModule {
 
 impl ShaderModule {
     /// Gets the inner wgpu shader module.
-    pub fn get_inner(&self) -> &wgpu::ShaderModule {
+    pub fn inner(&self) -> &wgpu::ShaderModule {
         &self.module
     }
 
     /// Gets the entry point of the shader module.
-    pub fn get_entry_point(&self) -> &str {
+    pub fn entry_point(&self) -> &str {
         &self.entry_point
     }
 }
 
-impl ShaderModuleManager {
+impl ShaderManager {
     /// Creates a new shader module system.
     pub fn new(device: RenderDevice) -> Self {
-        Self { device, modules: RenderResourceStorage::new() }
+        Self { device, modules: ResourceStorage::new() }
     }
 
     /// Creates a new shader module.
-    pub fn create(&mut self, descriptor: ShaderModuleDescriptor) -> Handle<ShaderModule> {
+    pub fn create(&mut self, descriptor: ShaderDescriptor) -> Handle<ShaderModule> {
         let module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader Module"),
             source: wgpu::ShaderSource::Wgsl(descriptor.source),
