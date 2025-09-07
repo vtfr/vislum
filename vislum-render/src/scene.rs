@@ -1,5 +1,5 @@
-use vislum_math::Matrix4;
-use vislum_system::System;
+
+use vislum_system::Resource;
 
 use crate::{
     mesh::RenderMesh,
@@ -57,8 +57,12 @@ pub struct SceneObject {
     pub mesh: Handle<RenderMesh>,
 }
 
+/// A manager for scenes.
+/// 
+/// Stores all [`Scene`]s that can be rendered.
+#[derive(Resource)]
 pub struct SceneManager {
-    pub scene: ResourceStorage<Scene>,
+    pub scenes: ResourceStorage<Scene>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -70,7 +74,7 @@ pub enum ApplyCommandError {
 impl SceneManager {
     pub fn new() -> Self {
         Self {
-            scene: ResourceStorage::new(),
+            scenes: ResourceStorage::new(),
         }
     }
 
@@ -83,7 +87,7 @@ impl SceneManager {
             sub_scenes: Vec::new(),
         };
 
-        self.scene.insert(scene)
+        self.scenes.insert(scene)
     }
 
     /// Create a new scene and apply a list of commands to it.
@@ -97,7 +101,7 @@ impl SceneManager {
 
         scene.apply_commands(initial_commands);
 
-        self.scene.insert(scene)
+        self.scenes.insert(scene)
     }
 
     /// Apply a list of commands to a scene.
@@ -108,7 +112,7 @@ impl SceneManager {
     ) -> Result<(), ApplyCommandError> {
         let scene_id = scene_id.into_resource_id();
         let scene = self
-            .scene
+            .scenes
             .get_mut(scene_id)
             .ok_or(ApplyCommandError::SceneNotFound(scene_id))?;
 
@@ -174,7 +178,7 @@ impl<'a> SceneVisitorContext<'a> {
     ) -> Result<(), SceneVisitorError> {
         let scene = self
             .scene_system
-            .scene
+            .scenes
             .get(scene_id)
             .ok_or(SceneVisitorError::SceneNotFound(scene_id))?;
 

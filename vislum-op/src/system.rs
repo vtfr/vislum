@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 use vislum_math::Vector2I;
-use vislum_system::System;
+use vislum_system::Resource;
 
 use crate::{compile::CompilationContext, eval::{EvalContext, EvalError, NodeRef}, node::{Connection, ConnectionPlacement, GraphBlueprint, GraphError, InputId, NodeId}, node_type::{NodeTypeRegistry, RegisterNodeType}, prelude::NodeType, value::TaggedValue};
 
-#[derive(System, Default)]
+#[derive(Resource, Default)]
 pub struct NodeGraphSystem {
     /// The registry of node types.
     node_type_registry: NodeTypeRegistry,

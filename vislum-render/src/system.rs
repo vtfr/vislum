@@ -1,4 +1,5 @@
-use vislum_system::System;
+
+use vislum_system::Resource;
 
 use crate::texture::{Texture, TextureDescriptor, TextureManager};
 use crate::types::{RenderDevice, RenderQueue};
@@ -10,7 +11,7 @@ use crate::mesh::{MeshManager, RenderMesh, RenderMeshDescriptor};
 /// A system for rendering the scene.
 /// 
 /// This system is responsible for rendering the scene to the screen.
-#[derive(System)]
+#[derive(Resource)]
 pub struct RenderSystem {
     device: RenderDevice,
     queue: RenderQueue,

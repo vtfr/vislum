@@ -66,7 +66,7 @@ impl Player {
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
 
-            let mut render_system = runtime.get_system_mut::<RenderSystem>();
+            let mut render_system = runtime.get_resource_mut::<RenderSystem>();
             
             // Do render the scene.
             render_system.render(vec![
@@ -102,7 +102,7 @@ impl ApplicationHandler<PlayerEvent> for Player {
             let runtime = Runtime::new(wgpu.device.clone(), wgpu.queue.clone());
 
             // TESTING DATA
-            let mut render_system = runtime.get_system_mut::<RenderSystem>();
+            let mut render_system = runtime.get_resource_mut::<RenderSystem>();
 
             let color_texture = render_system.create_texture(TextureDescriptor {
                 format: TextureFormat::Rgba8Unorm,

@@ -1,7 +1,5 @@
 use std::borrow::Cow;
 
-use vislum_system::System;
-
 use crate::{resource::{Handle, IntoResourceId, ResourceStorage}, types::RenderDevice};
 
 /// A manager for managing shaders. 

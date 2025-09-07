@@ -1,39 +1,39 @@
 use vislum_op::system::NodeGraphSystem;
 use vislum_render::types::{RenderDevice, RenderQueue};
 use vislum_render::system::RenderSystem;
-use vislum_system::{SysMut, SysRef, System, Systems};
+use vislum_system::{ResMut, Res, Resource, Resources};
 
 /// The runtime for the vislum engine.
 pub struct Runtime {
-    systems: Systems,
+    resources: Resources,
 }
 
 impl Runtime {
     pub fn new(device: RenderDevice, queue: RenderQueue) -> Self {
-        let mut systems = Systems::new();
+        let mut resources = Resources::new();
         
-        // Insert the default systems.
-        systems.insert(NodeGraphSystem::default());
-        systems.insert(RenderSystem::new(device, queue));
+        // Insert the default resources.
+        resources.insert(NodeGraphSystem::default());
+        resources.insert(RenderSystem::new(device, queue));
 
         Self {
-            systems,
+            resources,
         }
     }
 
     /// Gets a system by type.
-    pub fn get_system<T>(&self) -> SysRef<'_, T>
+    pub fn get_resource<T>(&self) -> Res<'_, T>
     where
-        T: System + 'static,
+        T: Resource, 
     {
-        self.systems.must_get::<T>()
+        self.resources.get::<T>()
     }
 
     /// Gets a mutable system by type.
-    pub fn get_system_mut<T>(&self) -> SysMut<'_, T>
+    pub fn get_resource_mut<T>(&self) -> ResMut<'_, T>
     where
-        T: System + 'static,
+        T: Resource,
     {
-        self.systems.must_get_mut::<T>()
+        self.resources.get_mut::<T>()
     }
 }

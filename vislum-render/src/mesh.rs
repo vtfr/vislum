@@ -1,4 +1,4 @@
-use vislum_system::System;
+use vislum_system::Resource;
 use wgpu::util::DeviceExt;
 
 use crate::types::RenderDevice;
@@ -37,6 +37,7 @@ pub struct Vertex {
     pub position: [f32; 3],
 }
 
+#[derive(Resource)]
 pub struct MeshManager {
     device: RenderDevice,
     meshes: ResourceStorage<RenderMesh>,

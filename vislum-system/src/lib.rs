@@ -1,29 +1,19 @@
 extern crate self as vislum_system;
 
 use std::any::{Any, TypeId};
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Ref, RefCell, RefMut, UnsafeCell};
 use std::collections::HashMap;
-use std::fmt::Debug;
 
 // Re-export the System macro.
-pub use vislum_system_macros::System;
+pub use vislum_system_macros::Resource;
 
-/// Marker trait for systems.
-pub trait System {
-    /// Returns a reference to the system
-    fn as_any(&self) -> &dyn Any;
+/// A marker trait for identifying resources.
+pub trait Resource: 'static + Any {}
 
-    /// Returns a mutable reference to the system
-    fn as_any_mut(&mut self) -> &mut dyn Any;
+/// A reference to a resource.
+pub struct Res<'a, T>(Ref<'a, T>);
 
-    /// Returns the type name of the system
-    fn type_name(&self) -> &str;
-}
-
-/// A reference to a system.
-pub struct SysRef<'a, T>(Ref<'a, T>);
-
-impl<'a, T> std::ops::Deref for SysRef<'a, T> {
+impl<'a, T> std::ops::Deref for Res<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -31,10 +21,10 @@ impl<'a, T> std::ops::Deref for SysRef<'a, T> {
     }
 }
 
-/// A mutable reference to a system.
-pub struct SysMut<'a, T>(RefMut<'a, T>);
+/// A mutable reference to a resource.
+pub struct ResMut<'a, T>(RefMut<'a, T>);
 
-impl<'a, T> std::ops::Deref for SysMut<'a, T> {
+impl<'a, T> std::ops::Deref for ResMut<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -42,26 +32,20 @@ impl<'a, T> std::ops::Deref for SysMut<'a, T> {
     }
 }
 
-impl<'a, T> std::ops::DerefMut for SysMut<'a, T> {
+impl<'a, T> std::ops::DerefMut for ResMut<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-struct ErasedSystemCell(Box<RefCell<dyn System>>);
+struct ErasedResourceCell(Box<RefCell<dyn Any>>);
 
-impl Debug for ErasedSystemCell {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ErasedSystemCell")
-    }
-}
-
-impl ErasedSystemCell {
+impl ErasedResourceCell {
     /// Creates a new shared system cell.
     #[inline]
     pub fn new<T>(system: T) -> Self
     where
-        T: System + 'static,
+        T: 'static,
     {
         Self(Box::new(RefCell::new(system)))
     }
@@ -72,21 +56,21 @@ impl ErasedSystemCell {
     ///
     /// Assumes that the caller has checked that the system is of the correct type.
     #[inline]
-    pub fn get_downcasted_ref<T>(&self) -> SysRef<T>
+    pub fn get_downcasted_ref<T>(&self) -> Res<'_, T>
     where
-        T: System + 'static,
+        T: 'static,
     {
         let system = match self.0.try_borrow() {
             Ok(system) => system,
-            Err(_) => system_already_borrowed(std::any::type_name::<T>()),
+            Err(_) => resource_already_borrowed(std::any::type_name::<T>()),
         };
 
-        let system = Ref::map(system, |s| match s.as_any().downcast_ref::<T>() {
+        let system = Ref::map(system, |s| match s.downcast_ref::<T>() {
             Some(system) => system,
-            None => incompatible_system_downcast(std::any::type_name::<T>()),
+            None => incompatible_resource_downcast(std::any::type_name::<T>()),
         });
 
-        SysRef(system)
+        Res(system)
     }
 
     /// Gets a mutable reference to a system.
@@ -95,105 +79,139 @@ impl ErasedSystemCell {
     ///
     /// Assumes that the caller has checked that the system is of the correct type.
     #[inline]
-    pub fn get_downcasted_mut<T>(&self) -> SysMut<T>
+    pub fn get_downcasted_mut<T>(&self) -> ResMut<'_, T>
     where
-        T: System + 'static,
+        T: 'static,
     {
         let system = match self.0.try_borrow_mut() {
             Ok(system) => system,
-            Err(_) => system_already_borrowed(std::any::type_name::<T>()),
+            Err(_) => resource_already_borrowed(std::any::type_name::<T>()),
         };
 
-        let system = RefMut::map(system, |s| match s.as_any_mut().downcast_mut::<T>() {
+        let system = RefMut::map(system, |s| match s.downcast_mut::<T>() {
             Some(system) => system,
-            None => incompatible_system_downcast(std::any::type_name::<T>()),
+            None => incompatible_resource_downcast(std::any::type_name::<T>()),
         });
 
-        SysMut(system)
+        ResMut(system)
     }
 }
 
 #[derive(Default)]
-pub struct Systems {
-    systems: HashMap<TypeId, ErasedSystemCell>,
+pub struct Resources {
+    resources: UnsafeCell<HashMap<TypeId, ErasedResourceCell>>,
 }
 
-impl Systems {
+impl std::fmt::Debug for Resources {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Resources")
+    }
+}
+
+impl Resources {
     /// Creates a new systems.
     #[inline]
     pub fn new() -> Self {
         Default::default()
     }
 
-    /// Gets a system by type.
-    pub fn get<T>(&self) -> Option<SysRef<T>>
-    where
-        T: System + 'static,
-    {
-        let system = self.systems.get(&std::any::TypeId::of::<T>())?;
-        Some(system.get_downcasted_ref::<T>())
-    }
-
-    /// Gets a mutable system by type.
-    pub fn get_mut<T>(&self) -> Option<SysMut<T>>
-    where
-        T: System + 'static,
-    {
-        let system = self.systems.get(&TypeId::of::<T>())?;
-        Some(system.get_downcasted_mut::<T>())
-    }
-
     /// Gets a system by type, panicking if the system is not found.
-    pub fn must_get<T>(&self) -> SysRef<T>
+    pub fn get<T>(&self) -> Res<'_, T>
     where
-        T: System + 'static,
+        T: Resource,
     {
-        match self.get::<T>() {
-            Some(system) => system,
-            None => system_not_found(std::any::type_name::<T>()),
+        // SAFETY: We're not mutating the inner HashMap.
+        let inner = unsafe { self.inner() };
+
+        match inner.get(&std::any::TypeId::of::<T>()) {
+            Some(res) => res.get_downcasted_ref::<T>(),
+            None => resource_not_found(std::any::type_name::<T>()),
         }
     }
 
     /// Gets a mutable system by type, panicking if the system is not found.
-    pub fn must_get_mut<T>(&self) -> SysMut<T>
+    pub fn get_mut<T>(&self) -> ResMut<'_, T>
     where
-        T: System + 'static,
+        T: Resource,
     {
-        match self.get_mut::<T>() {
-            Some(system) => system,
-            None => system_not_found(std::any::type_name::<T>()),
+        // SAFETY: We're not mutating the inner HashMap.
+        let inner = unsafe { self.inner() };
+
+        match inner.get(&std::any::TypeId::of::<T>()) {
+            Some(res) => res.get_downcasted_mut::<T>(),
+            None => resource_not_found(std::any::type_name::<T>()),
         }
     }
 
-    /// Inserts a system.
-    pub fn insert<T>(&mut self, system: T)
+    /// Gets a resource by type, inserting a default resource if it is not found.
+    pub fn get_or_insert_default<T>(&self) -> Res<'_, T>
     where
-        T: System + 'static,
+        T: Resource + Default,
     {
-        self.systems
-            .insert(TypeId::of::<T>(), ErasedSystemCell::new(system));
+        // SAFETY: We only insert a new resource if it is not found, so no borrows to the
+        // previous resource can be invalidated (as the resource does not exist). Moreover, the
+        // HashMap stores a pointer to the resource, so we are guaranteed that changes within the
+        // HashMap storage will invalidate other borrows.
+        let inner = unsafe { self.inner() };
+
+        inner
+            .entry(TypeId::of::<T>())
+            .or_insert_with(|| ErasedResourceCell::new(T::default()))
+            .get_downcasted_ref::<T>()
+    }
+
+    /// Gets a mutable resource by type, inserting a default resource if it is not found.
+    pub fn get_mut_or_insert_default<T>(&self) -> ResMut<'_, T>
+    where
+        T: Resource + Default,
+    {
+        // SAFETY: We only insert a new resource if it is not found, so no borrows to the
+        // previous resource can be invalidated (as the resource does not exist). Moreover, the
+        // HashMap stores a pointer to the resource, so we are guaranteed that changes within the
+        // HashMap storage will invalidate other borrows.
+        let inner = unsafe { self.inner() };
+
+        inner
+            .entry(TypeId::of::<T>())
+            .or_insert_with(|| ErasedResourceCell::new(T::default()))
+            .get_downcasted_mut::<T>()
+    }
+
+    /// Inserts a system.
+    pub fn insert<T>(&mut self, resource: T)
+    where
+        T: Resource,
+    {
+        // SAFETY: We have exclusive access to the resources, so no borrows are possible.
+        let inner = unsafe { self.inner() };
+
+        inner.insert(TypeId::of::<T>(), ErasedResourceCell::new(resource));
     }
 
     /// Inserts a default system.
     pub fn insert_default<T>(&mut self)
     where
-        T: System + Default + 'static,
+        T: Resource + Default,
     {
         self.insert(T::default());
+    }
+
+    unsafe fn inner(&self) -> &mut HashMap<TypeId, ErasedResourceCell> {
+        unsafe { &mut *self.resources.get() }
     }
 }
 
 #[cold]
-fn system_already_borrowed(type_name: &str) -> ! {
-    panic!("System already borrowed: {}", type_name)
+fn resource_already_borrowed(type_name: &str) -> ! {
+    panic!("Resource already borrowed: {}", type_name)
 }
 
 #[cold]
-fn incompatible_system_downcast(type_name: &str) -> ! {
-    panic!("System is not of type {}", type_name)
+fn incompatible_resource_downcast(type_name: &str) -> ! {
+    panic!("Resource is not of type {}", type_name)
 }
 
 #[cold]
-fn system_not_found(type_name: &str) -> ! {
-    panic!("System not found: {}", type_name)
+fn resource_not_found(type_name: &str) -> ! {
+    panic!("Resource not found: {}", type_name)
 }

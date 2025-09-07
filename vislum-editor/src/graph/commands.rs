@@ -43,7 +43,7 @@ pub struct DeleteNodesCommand {
 
 impl Command for DeleteNodesCommand {
     fn apply(&self, editor: &mut Editor) {
-        let mut system = editor.runtime.get_system_mut::<NodeGraphSystem>();
+        let mut system = editor.runtime.get_resource_mut::<NodeGraphSystem>();
         for node_id in &self.node_ids {
             system.remove_node(*node_id);
         }
@@ -60,7 +60,7 @@ pub struct AddNodeCommand {
 
 impl Command for AddNodeCommand {
     fn apply(&self, editor: &mut Editor) {
-        let mut system = editor.runtime.get_system_mut::<NodeGraphSystem>();
+        let mut system = editor.runtime.get_resource_mut::<NodeGraphSystem>();
         system.add_node(&self.node_type_id);
     }
 
@@ -76,7 +76,7 @@ pub struct MoveNodesCommand {
 
 impl Command for MoveNodesCommand {
     fn apply(&self, editor: &mut Editor) {
-        let mut system = editor.runtime.get_system_mut::<NodeGraphSystem>();
+        let mut system = editor.runtime.get_resource_mut::<NodeGraphSystem>();
         let ids = self.node_ids.iter().copied();
 
         system.update_node_positions_with_offset(ids, self.delta);
