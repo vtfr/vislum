@@ -3195,6 +3195,7 @@ dependencies = [
  "serde_json",
  "vislum-op",
  "vislum-render",
+ "vislum-runtime",
  "wgpu",
  "winit",
 ]

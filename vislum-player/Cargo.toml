@@ -7,6 +7,7 @@ edition = "2024"
 # vislum-asset = { path = "../vislum_asset" }
 vislum-op = { path = "../vislum-op" }
 vislum-render = { path = "../vislum-render" }
+vislum-runtime = { path = "../vislum-runtime" }
 serde_json = { workspace = true }
 serde = { workspace = true }
 winit = "0.30.12"

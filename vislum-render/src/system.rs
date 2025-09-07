@@ -1,4 +1,4 @@
-use vislum_system::{System, Systems};
+use vislum_system::System;
 
 use crate::texture::{Texture, TextureDescriptor, TextureManager};
 use crate::types::{RenderDevice, RenderQueue};
@@ -37,16 +37,20 @@ impl RenderSystem {
     }
 
     /// Renders the scene.
-    pub fn render(&mut self, passes: Vec<Box<dyn RenderPass>>, output: &wgpu::TextureView) {
+    pub fn render(&mut self, passes: Vec<Box<dyn RenderPass>>, output: &wgpu::TextureView, output_format: wgpu::TextureFormat) {
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: None,
         });
 
         let context = RenderPassContext {
+            device: &self.device,
+            queue: &self.queue,
             mesh_manager: &self.mesh_manager,
             scene_manager: &self.scene_manager,
             shader_manager: &self.shader_manager,
             texture_manager: &self.texture_manager,
+            screen_view: output,
+            screen_format: output_format,
         };
 
         for mut pass in passes {
@@ -90,7 +94,7 @@ impl RenderSystem {
 
     /// Apply a list of commands to a scene.
     pub fn apply_scene_commands(&mut self, scene_id: impl IntoResourceId<Scene>, commands: impl IntoIterator<Item = SceneCommand>) {
-        self.scene_manager.apply(scene_id, commands);
+        self.scene_manager.apply(scene_id, commands).unwrap();
     }
 
     /// Creates a new shader.
@@ -139,6 +143,7 @@ pub struct RenderPassContext<'a> {
     pub shader_manager: &'a ShaderManager,
     pub texture_manager: &'a TextureManager,
     pub screen_view: &'a wgpu::TextureView,
+    pub screen_format: wgpu::TextureFormat,
 }
 
 pub trait RenderPass {
@@ -152,16 +157,16 @@ pub trait RenderPass {
 /// A forward render pass on a given scene.
 pub struct ForwardRenderPass {
     pub scene: Handle<Scene>,
-    pub color_texture: Handle<()>,
+    pub color_texture: Handle<Texture>,
 }
 
 impl RenderPass for ForwardRenderPass {
     fn render(
         &mut self,
-        context: RenderPassContext,
-        encoder: &mut wgpu::CommandEncoder,
+        _context: RenderPassContext,
+        _encoder: &mut wgpu::CommandEncoder,
     ) {
-        // TODO
+        // TODO: Implement forward rendering
     }
 }
 
@@ -169,7 +174,15 @@ impl RenderPass for ForwardRenderPass {
 /// 
 /// Blits a source render target to a destination render target.
 pub struct ScreenBlitPass {
-    pub input: Handle<Texture>,
+    pub input_texture: Handle<Texture>,
+}
+
+impl ScreenBlitPass {
+    pub fn new(input_texture: Handle<Texture>) -> Self {
+        Self {
+            input_texture,
+        }
+    }
 }
 
 impl RenderPass for ScreenBlitPass {
@@ -178,15 +191,85 @@ impl RenderPass for ScreenBlitPass {
         context: RenderPassContext,
         encoder: &mut wgpu::CommandEncoder,
     ) {
-        context.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{
+        // Load the blit shader
+        let shader_source = include_str!("blit.wgsl");
+        let shader_module = context.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Blit Shader"),
+            source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+        });
+
+        // Get the input texture
+        let input_texture = context.texture_manager.get(&self.input_texture).unwrap();
+
+        // Create bind group layout
+        let bind_group_layout = context.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Blit Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        // Create sampler
+        let sampler = context.device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Blit Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        // Create bind group
+        let bind_group = context.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Blit Bind Group"),
+            layout: &bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&input_texture.default_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+
+        // Create pipeline layout
+        let pipeline_layout = context.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Blit Pipeline Layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        // Create render pipeline
+        let pipeline = context.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Screen Blit Pipeline"),
-            layout: None,
+            layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
-                module: context.shader_manager.get(self.input.shader_module).unwrap().module(),
-                entry_point: "main".to_string(),
+                module: &shader_module,
+                entry_point: Some("vs_main"),
                 buffers: &[],
+                compilation_options: Default::default(),
             },
-            primitive: wgpu::PrimitiveState{
+            primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
@@ -196,18 +279,43 @@ impl RenderPass for ScreenBlitPass {
                 conservative: false,
             },
             depth_stencil: None,
-            multisample: wgpu::MultisampleState{
+            multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            fragment: wgpu::FragmentState{
-                module: context.shader_manager.get(self.input.shader_module).unwrap().module(),
-                entry_point: "main".to_string(),
-                targets: &[],
-            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader_module,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: context.screen_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
             multiview: None,
             cache: None,
-        })
+        });
+
+        // Begin render pass and draw
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Blit Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: context.screen_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+
+        render_pass.set_pipeline(&pipeline);
+        render_pass.set_bind_group(0, &bind_group, &[]);
+        render_pass.draw(0..3, 0..1);
     }
 }

@@ -55,7 +55,6 @@ pub enum SceneCommand {
 #[derive(Debug, Clone)]
 pub struct SceneObject {
     pub mesh: Handle<RenderMesh>,
-    pub transform: Matrix4,
 }
 
 pub struct SceneManager {

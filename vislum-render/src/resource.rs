@@ -122,6 +122,12 @@ impl<T> IntoResourceId<T> for Handle<T> {
     }
 }
 
+impl<T> IntoResourceId<T> for &'_ Handle<T> {
+    fn into_resource_id(&self) -> ResourceId<T> {
+        self.inner.id
+    }
+}
+
 /// A storage for resources.
 pub struct ResourceStorage<T> {
     drop_tx: Sender<HandleDropEvent<T>>,

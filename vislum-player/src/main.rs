@@ -6,6 +6,8 @@ use vislum_op::{
     prelude::*,
     system::NodeGraphSystem,
 };
+use vislum_render::{mesh::{RenderMeshDescriptor, Vertex}, resource::Handle, scene::{Scene, SceneCommand, SceneObject}, system::{ForwardRenderPass, RenderSystem, ScreenBlitPass}, texture::{Texture, TextureDescriptor, TextureFormat}};
+use vislum_runtime::Runtime;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
@@ -18,37 +20,26 @@ use crate::wgpu_state::WgpuState;
 
 mod wgpu_state;
 
+/// Testing data for the player.
+struct TestingData {
+    render_texture: Handle<Texture>,
+    scene: Handle<Scene>,
+}
+
 #[derive(Default)]
-pub enum PlayerState {
+enum PlayerState {
     #[default]
     Uninitialized,
     /// The window has been created, but the runtime has not been initialized
-    WindowCreated { window: Arc<Window> },
-    /// The runtime has been initialized
-    WgpuInitialized {
-        wgpu: WgpuState,
+    Ready {
         window: Arc<Window>,
+        wgpu: WgpuState,
+        runtime: Runtime,
+        testing_data: TestingData,
     },
 }
 
-impl PlayerState {
-    pub fn window(&self) -> Option<&Window> {
-        match self {
-            PlayerState::WindowCreated { window } => Some(window),
-            PlayerState::WgpuInitialized { window, .. } => Some(window),
-            PlayerState::Uninitialized => None,
-        }
-    }
-
-    pub fn wgpu(&self) -> Option<&WgpuState> {
-        match self {
-            PlayerState::WgpuInitialized { wgpu, .. } => Some(wgpu),
-            _ => None,
-        }
-    }
-}
-
-pub struct Player {
+struct Player {
     proxy: EventLoopProxy<PlayerEvent>,
     state: PlayerState,
 }
@@ -65,40 +56,29 @@ impl Player {
 impl Player {
     fn render(&self) {
         // Request a redraw of the window
-        if let Some(window) = self.state.window() {
+        let PlayerState::Ready { window, wgpu, runtime, testing_data } = &self.state else { return };
+            // Request a redraw of the window for the next frame
             window.request_redraw();
-        }
-
-        if let PlayerState::WgpuInitialized { wgpu, .. } = &self.state {
+        
+            // Get the current texture
             let current_texture = wgpu.surface.get_current_texture().unwrap();
             let view = current_texture
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
-            let mut encoder = wgpu
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-            {
-                let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    color_attachments: &[
-                        Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                    label: None,
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-            }
+            let mut render_system = runtime.get_system_mut::<RenderSystem>();
+            
+            // Do render the scene.
+            render_system.render(vec![
+                Box::new(ForwardRenderPass { 
+                    scene: testing_data.scene.clone(), 
+                    color_texture: testing_data.render_texture.clone(),
+                }),
+                Box::new(ScreenBlitPass::new(testing_data.render_texture.clone())),
+            ], &view, current_texture.texture.format());
 
-            wgpu.queue.submit(std::iter::once(encoder.finish()));
+            // Present the texture.
             current_texture.present();
-        }
     }
 }
 
@@ -117,16 +97,45 @@ impl ApplicationHandler<PlayerEvent> for Player {
             let window = event_loop.create_window(window_attributes).unwrap();
             let window = Arc::new(window);
 
-            self.state = PlayerState::WindowCreated {
-                window: window.clone(),
-            };
-
             // Initialize the runtime.
             let wgpu = pollster::block_on(WgpuState::new(window.clone())).unwrap();
+            let runtime = Runtime::new(wgpu.device.clone(), wgpu.queue.clone());
 
-            self.state = PlayerState::WgpuInitialized {
+            // TESTING DATA
+            let mut render_system = runtime.get_system_mut::<RenderSystem>();
+
+            let color_texture = render_system.create_texture(TextureDescriptor {
+                format: TextureFormat::Rgba8Unorm,
+                data: None,
+                width: 800,
+                height: 600,
+            });
+
+            let mesh = render_system.create_mesh(RenderMeshDescriptor {
+                vertices: vec![
+                    Vertex { position: [-0.5, -0.5, 0.0] },
+                    Vertex { position: [0.5, -0.5, 0.0] }, 
+                    Vertex { position: [0.0, 0.5, 0.0] }
+                ],
+                indices: vec![0, 1, 2],
+            });
+
+            let scene = render_system.create_scene_with_commands(vec![
+                SceneCommand::AddObject(SceneObject {
+                    mesh,
+                }),
+            ]);
+
+            drop(render_system);
+
+            self.state = PlayerState::Ready {
                 window: window.clone(),
                 wgpu,
+                runtime,
+                testing_data: TestingData {
+                    render_texture: color_texture,
+                    scene,
+                },
             };
         }
     }
