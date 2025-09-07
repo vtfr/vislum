@@ -49,6 +49,11 @@ impl Texture {
     pub fn texture(&self) -> &wgpu::Texture {
         &self.texture
     }
+
+    /// Gets the format of the texture.
+    pub fn format(&self) -> TextureFormat {
+        self.format
+    }
 }
 
 /// Manages textures.
@@ -81,7 +86,7 @@ impl TextureManager {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu_format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         };
 

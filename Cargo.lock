@@ -3205,6 +3205,7 @@ name = "vislum-render"
 version = "0.1.0"
 dependencies = [
  "atomicow",
+ "bytemuck",
  "cgmath",
  "crossbeam",
  "encase",

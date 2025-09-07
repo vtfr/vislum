@@ -102,6 +102,17 @@ impl SceneManager {
         self.scenes.insert(scene)
     }
 
+    pub fn get(&self, id: impl IntoResourceId<Scene>) -> Option<&Scene> {
+        let id = id.into_resource_id();
+        self.scenes.get(id)
+    }
+
+    pub fn visit(&self, root: ResourceId<Scene>, visitor: &mut dyn SceneVisitor) {
+        let mut context = SceneVisitorContext::new(self);
+        
+        let _ = context.visit(visitor, root);
+    }
+
     /// Apply a list of commands to a scene.
     pub fn apply(
         &mut self,

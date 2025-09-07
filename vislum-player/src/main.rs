@@ -1,7 +1,16 @@
 use std::{error::Error, sync::Arc};
 
-use vislum_render::{MeshManager, RenderPassCollector, SceneManager, ScreenRenderTarget, TextureManager, mesh::{MeshDescriptor, Vertex}, pass::{ScreenBlitPass}, scene::{Scene, SceneCommand, SceneObject}, texture::{Texture, TextureDescriptor, TextureFormat}};
-use vislum_render::cache::storage::Handle;
+use vislum_op::{
+    compile::CompilationContext,
+    eval::{Eval, EvalContext, EvalError, Multiple, Output, Single},
+    prelude::*,
+    system::NodeGraphSystem,
+};
+use vislum_render::{Handle, MeshManager, RenderPassCollector, SceneManager, ScreenRenderTarget, TextureManager};
+use vislum_render::texture::{Texture, TextureDescriptor, TextureFormat};
+use vislum_render::scene::{Scene, SceneCommand, SceneObject};
+use vislum_render::mesh::{MeshDescriptor, Vertex};
+use vislum_render::pass::{ForwardRenderPass, ScreenBlitPass};
 use vislum_runtime::Runtime;
 use winit::{
     application::ApplicationHandler,
@@ -69,9 +78,13 @@ impl Player {
             //     color_texture: testing_data.render_texture.clone(),
             // }));
 
+            render_pass_collector.add_pass(Arc::new(ForwardRenderPass { 
+                scene: testing_data.scene.clone(), 
+                color: testing_data.render_texture.clone(),
+            }));
             render_pass_collector.add_pass(Arc::new(ScreenBlitPass::new(testing_data.render_texture.clone())));
             render_pass_collector.render(&runtime.resources, &ScreenRenderTarget {
-                view: view,
+                view,
                 format: current_texture.texture.format(),
             });
 
