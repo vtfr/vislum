@@ -120,8 +120,8 @@ impl ApplicationHandler<PlayerEvent> for Player {
             let color_texture = texture_manager.create(TextureDescriptor {
                 format: TextureFormat::Rgba8Unorm,
                 data: None,
-                width: 800,
-                height: 600,
+                width: 1920,
+                height: 1080,
             });
 
             let mesh = mesh_manager.create(MeshDescriptor {

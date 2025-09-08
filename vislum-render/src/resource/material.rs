@@ -47,12 +47,12 @@ pub struct MaterialDescriptor {
 }
 
 #[derive(Resource)]
-pub struct MaterialSystem {
+pub struct MaterialManager {
     device: RenderDevice,
     materials: RenderResourceStorage<RenderMaterial>,
 }
 
-impl MaterialSystem {
+impl MaterialManager {
     pub fn new(device: RenderDevice) -> Self {
         Self { device, materials: RenderResourceStorage::new() }
     }
