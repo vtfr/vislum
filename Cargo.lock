@@ -857,9 +857,9 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 
 [[package]]
 name = "downcast-rs"
-version = "2.0.1"
+version = "2.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea8a8b81cacc08888170eef4d13b775126db426d0b348bee9d18c2c1eaf123cf"
+checksum = "117240f60069e65410b3ae1bb213295bd828f707b5bec6596a1afc8793ce0cbc"
 
 [[package]]
 name = "dpi"
@@ -3125,8 +3125,10 @@ dependencies = [
  "atomicow",
  "crossbeam",
  "derive_more",
+ "downcast-rs 2.0.2",
  "notify-debouncer-full",
  "serde",
+ "static_assertions",
  "thiserror 2.0.16",
 ]
 
@@ -3134,7 +3136,7 @@ dependencies = [
 name = "vislum-editor"
 version = "0.1.0"
 dependencies = [
- "downcast-rs 2.0.1",
+ "downcast-rs 2.0.2",
  "eframe",
  "slotmap",
  "vislum-math",
@@ -3210,7 +3212,9 @@ dependencies = [
  "crossbeam",
  "encase",
  "slotmap",
+ "smallvec",
  "thiserror 2.0.16",
+ "vislum-asset",
  "vislum-math",
  "vislum-system",
  "wgpu",

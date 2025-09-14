@@ -3,123 +3,127 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
-use crate::{Asset, AssetPath, AssetPathResolver, Fs, FsError};
+use crate::asset::Asset;
+use crate::fs::memory::MemoryFs;
+use crate::fs::{Bytes, Fs, ReadError};
+use crate::path::{AssetNamespace, AssetPath};
 
-#[derive(Debug, Error)]
-pub enum LoadError {
-    #[error("The asset was not found: {0}")]
-    NotFound(AssetPath<'static>),
-
-    #[error("The asset has a dependency that was not found: {0}")]
-    DependencyNotFound(AssetPath<'static>),
-
-    #[error("Dependency cycle detected")]
-    DependencyCycle(Vec<AssetPath<'static>>),
-
-    #[error("The asset is invalid: {0}")]
-    Custom(String),
-}
-
-/// A context for loading an asset.
+/// The context for loading assets.
 pub struct LoadContext {
-    /// The resolver for asset paths.
-    pub asset_path_resolver: AssetPathResolver,
+    /// The path of the asset to load.
+    pub path: AssetPath,
 
-    /// The filesystem.
-    pub fs: Arc<dyn Fs>,
+    /// The filesystem for the vislum assets.
+    pub vislum_fs: Arc<MemoryFs>,
 
-    /// The registry of loaders.
-    pub loaders: Arc<LoaderRegistry>,
+    /// All the available asset loaders.
+    pub loaders: Arc<AssetLoaders>,
 
-    /// The dependencies of the asset.
-    pub dependencies: HashSet<AssetPath<'static>>,
+    /// The filesystem for the project.
+    pub project_fs: Option<Arc<dyn Fs>>,
+
+    /// All collected dependencies.
+    pub dependencies: HashSet<AssetPath>,
 }
 
 impl LoadContext {
-    /// Reads a file from the filesystem.
-    pub fn read_file<'a>(&mut self, path: AssetPath<'a>) -> Result<Arc<[u8]>, LoadError> {
-        let resolved_path = self.asset_path_resolver.resolve(path.path());
+    pub fn load(&mut self, path: &AssetPath) -> Result<Arc<dyn Asset>, LoadError> {
+        let ext = path.path()
+            .extension()
+            .ok_or(LoadError::NoLoaderFound)?
+            .to_str()
+            .unwrap();
 
-        let bytes = match self.fs.read(&resolved_path) {
-            Ok(bytes) => bytes,
-            Err(FsError::NotFound) => return Err(LoadError::NotFound(path.into_owned())),
+        let loader = self.loaders.resolve(ext)
+            .ok_or(LoadError::NoLoaderFound)?;
+
+        loader.load(self)
+    }
+
+    /// Reads an asset from the filesystem.
+    pub fn read(&mut self, path: &AssetPath) -> Result<Bytes, LoadError> {
+        let bytes = match path.namespace() {
+            AssetNamespace::Vislum => self.vislum_fs.read(path)?,
+            AssetNamespace::Project => match self.project_fs.as_ref() {
+                Some(project_fs) => project_fs.read(path)?,
+                None => return Err(LoadError::ProjectNotLoaded),
+            }
         };
 
-        // Add the dependency to the context.
-        self.dependencies.insert(path.into_owned());
+        // If the path is not the same as the path of the asset to load, 
+        // then track it as a dependency.
+        if path != &self.path {
+            self.dependencies.insert(path.clone());
+        }
 
         Ok(bytes)
     }
 
-    pub fn load(&mut self, path: AssetPath<'static>) -> Result<Arc<dyn Asset>, LoadError> {
-        let ext = path
-            .path()
-            .extension()
-            .ok_or_else(|| LoadError::NotFound(path.into_owned()))?
-            .to_str()
-            .ok_or_else(|| LoadError::NotFound(path.into_owned()))?;
+}
 
-        let Some(loader) = self.loaders.get(ext) else {
-            return Err(LoadError::NotFound(path.into_owned()));
-        };
-
-        loader.load(self, path)
-    }
+#[derive(Debug, Error)]
+pub enum LoadError {
+    #[error("Read error: {0}")]
+    ReadError(#[from] ReadError),
+    #[error("The project is not loaded. Please open a project first before loading project assets.")]
+    ProjectNotLoaded,
+    #[error("No loader found for the given path")]
+    NoLoaderFound,
 }
 
 pub trait AssetLoader: Send + Sync {
     type Asset: Asset;
 
-    /// All the extensions this loader can load.
+    /// Returns the extensions that this loader can load.
     fn extensions(&self) -> &'static [&'static str];
 
-    /// Loads the asset.
-    fn load(
-        &self,
-        ctx: &mut LoadContext,
-        path: AssetPath<'static>,
-    ) -> Result<Self::Asset, LoadError>;
+    /// Loads an asset from the filesystem.
+    fn load(&self, context: &mut LoadContext) -> Result<Self::Asset, LoadError>;
 }
 
 pub trait ErasedAssetLoader: Send + Sync {
     fn extensions(&self) -> &'static [&'static str];
 
-    fn load(
-        &self,
-        ctx: &mut LoadContext,
-        path: AssetPath<'static>,
-    ) -> Result<Arc<dyn Asset>, LoadError>;
+    fn load(&self, context: &mut LoadContext) -> Result<Arc<dyn Asset>, LoadError>;
 }
 
-impl<T: AssetLoader> ErasedAssetLoader for T {
+impl<L> ErasedAssetLoader for L
+where 
+    L: AssetLoader,
+{
     fn extensions(&self) -> &'static [&'static str] {
-        T::extensions(self)
+        L::extensions(self)
     }
 
-    fn load(
-        &self,
-        ctx: &mut LoadContext,
-        path: AssetPath<'static>,
-    ) -> Result<Arc<dyn Asset>, LoadError> {
-        let asset = T::load(self, ctx, path)?;
-        Ok(Arc::new(asset))
-    }
-}
-
-#[derive(Default)]
-pub struct LoaderRegistry {
-    loaders: HashMap<&'static str, Arc<dyn ErasedAssetLoader>>,
-}
-
-impl LoaderRegistry {
-    pub fn add<L: ErasedAssetLoader + 'static>(&mut self, loader: L) {
-        let loader = Arc::new(loader);
-        for extension in loader.extensions() {
-            self.loaders.insert(extension, loader.clone());
+    fn load(&self, context: &mut LoadContext) -> Result<Arc<dyn Asset>, LoadError> {
+        match L::load(self, context) {
+            Ok(asset) => Ok(Arc::new(asset)),
+            Err(e) => Err(e),
         }
     }
+}
 
-    pub fn get(&self, extension: &str) -> Option<Arc<dyn ErasedAssetLoader>> {
-        self.loaders.get(extension).cloned()
+pub struct AssetLoaders {
+    loaders: Vec<Arc<dyn ErasedAssetLoader>>,
+}
+
+impl AssetLoaders {
+    pub fn new() -> Self {
+        Self { loaders: Vec::new() }
+    }
+
+    /// Adds a loader to the loaders.
+    pub fn add<L>(&mut self, loader: L) 
+    where 
+        L: ErasedAssetLoader + 'static,
+    {
+        self.loaders.push(Arc::new(loader));
+    }
+
+    /// Resolves a loader for the given extension.
+    pub fn resolve(&self, extension: &str) -> Option<Arc<dyn ErasedAssetLoader>> {
+        self.loaders.iter()
+            .find(|loader| loader.extensions().contains(&extension))
+            .cloned()
     }
 }

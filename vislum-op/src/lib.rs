@@ -7,6 +7,7 @@ pub mod types;
 pub mod compile;
 pub mod eval;
 pub mod system;
+pub mod introspect;
 
 pub mod prelude {
     pub use crate::bundle;

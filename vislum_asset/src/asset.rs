@@ -1,48 +1,29 @@
-use std::any::Any;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::{AssetPath, LoadError};
+use downcast_rs::{DowncastSync};
 
-pub trait Asset: Any + Send + Sync {}
+use crate::loader::LoadError;
+use crate::path::AssetPath;
 
-#[derive(Debug, Clone)]
-pub struct AssetPathResolver {
-    root: Arc<Path>,
+pub trait Asset: Send + Sync + DowncastSync { }
+
+downcast_rs::impl_downcast!(sync Asset);
+pub(crate) enum InternalAssetEvent {
+    /// An asset has been created.
+    Created(AssetPath),
+    /// An asset has been changed.
+    Changed(AssetPath),
+    /// An asset has been loaded.
+    Loaded(LoadedAssetEvent),
 }
 
-impl AssetPathResolver {
-    pub fn new(root: impl AsRef<Path>) -> Self {
-        Self {
-            root: Arc::from(root.as_ref()),
-        }
-    }
+static_assertions::assert_impl_all!(InternalAssetEvent: Send, Sync);
 
-    /// Resolves an asset path to an absolute path.
-    pub fn resolve(&self, path: impl AsRef<Path>) -> PathBuf {
-        self.root.join(path)
-    }
-
-    /// Unresolves an absolute path to a relative path.
-    pub fn unresolve<'a>(&self, path: &'a Path) -> Option<AssetPath<'a>> {
-        let stripped = path.strip_prefix(self.root.as_ref()).ok()?;
-
-        Some(AssetPath::from_path(stripped))
-    }
-
-    pub fn root_path(&self) -> &Path {
-        &self.root
-    }
-}
-
-pub enum AssetEvent {
-    Changed(AssetPath<'static>),
-    Loaded(LoadedAsset),
-}
-
-pub struct LoadedAsset {
-    pub path: AssetPath<'static>,
+pub(crate) struct LoadedAssetEvent {
+    pub path: AssetPath,
     pub result: Result<Arc<dyn Asset>, LoadError>,
-    pub dependencies: HashSet<AssetPath<'static>>,
+    pub dependencies: HashSet<AssetPath>,
 }
+
+static_assertions::assert_impl_all!(InternalAssetEvent: Send, Sync);

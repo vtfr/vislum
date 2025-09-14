@@ -3,6 +3,7 @@ use syn::parse_macro_input;
 
 mod node;
 mod value;
+mod introspect;
 
 #[proc_macro_derive(Value, attributes(value))]
 pub fn derive_value(input: TokenStream) -> TokenStream {

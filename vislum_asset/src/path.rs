@@ -1,77 +1,134 @@
-use std::path::Path;
-
 use atomicow::CowArc;
-use std::fmt::Display;
+use thiserror::Error;
+use std::{fmt::Display, path::{Path, PathBuf}, sync::Arc};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AssetPath<'a> {
-    path: CowArc<'a, str>,
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum AssetNamespace {
+    /// The namespace for Vislum embedded assets, 
+    /// e.g. "vislum://shaders/default.wgsl".
+    Vislum,
+    /// The namespace for project defined assets, 
+    /// e.g. "project://textures/texture.png".
+    Project,
 }
 
-impl AssetPath<'_> {
-    /// Creates a new asset path from a string.
-    pub fn new(path: &str) -> AssetPath {
-        AssetPath {
-            path: CowArc::Borrowed(path),
+impl Display for AssetNamespace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AssetNamespace::Vislum => write!(f, "vislum"),
+            AssetNamespace::Project => write!(f, "project"),
         }
     }
+}
 
-    pub const fn new_static(path: &'static str) -> AssetPath<'static> {
-        AssetPath {
-            path: CowArc::Static(path)
-        }
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AssetPath {
+    namespace: AssetNamespace,
+    path: CowArc<'static, Path>,
+}
 
-    /// Creates a new asset path from a string.
-    pub fn new_owned(path: &str) -> AssetPath<'static> {
-        AssetPath {
+static_assertions::assert_impl_all!(AssetPath: Send, Sync);
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Error)]
+#[error("Invalid asset path")]
+pub struct AssetPathParseError;
+
+impl AssetPath {
+    /// Creates a new asset path.
+    pub fn new(namespace: AssetNamespace, path: &Path) -> Self {
+        Self {
+            namespace,
             path: CowArc::new_owned_from_arc(path),
         }
     }
 
-    /// Creates a new asset path from a path.
-    pub fn from_path(path: &Path) -> AssetPath {
-        AssetPath {
-            path: CowArc::Borrowed(path.to_str().unwrap()),
+    /// Creates a new project asset path.
+    pub fn new_project(path: &Path) -> Self {
+        Self {
+            namespace: AssetNamespace::Project,
+            path: CowArc::new_owned_from_arc(path),
         }
     }
 
-    /// Returns the path as a reference.
+    pub fn try_parse(path: &str) -> Result<AssetPath, AssetPathParseError> {
+        let (namespace, rest) = path.split_once("://")
+            .ok_or(AssetPathParseError)?;
+
+        let namespace = match namespace {
+            "vislum" => AssetNamespace::Vislum, 
+            "project" => AssetNamespace::Project,
+            _ => return Err(AssetPathParseError)
+        };
+
+        let path = CowArc::new_owned_from_arc(Path::new(rest));
+
+        Ok(AssetPath {
+            namespace,
+            path,
+        })
+    }
+
+    /// Returns the namespace of the asset.
+    pub fn namespace(&self) -> AssetNamespace {
+        self.namespace
+    }
+
+    /// Returns the path of the asset.
     pub fn path(&self) -> &Path {
-        Path::new(self.path.as_ref())
-    }
-
-    /// Converts the path to an owned path.
-    pub fn into_owned(&self) -> AssetPath<'static> {
-        AssetPath {
-            path: self.path.clone().into_owned(),
-        }
+        &self.path
     }
 }
 
-impl Display for AssetPath<'_> {
+impl Display for AssetPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.path().display())
+        write!(f, "{}://{}", self.namespace, self.path.display())
     }
 }
 
-/// A bundled asset.
-///
-/// An asset that is bundled into the executable.
-pub struct BundledAsset {
-    path: AssetPath<'static>,
-    data: &'static [u8],
+/// A path resolver for project assets.
+/// 
+/// This path resolver is used to resolve paths for assets that are not bundled into the executable.
+#[derive(Debug, Clone)]
+pub struct ProjectAssetResolver {
+    root: Arc<Path>,
 }
 
-impl BundledAsset {
-    pub const fn new(path: AssetPath<'static>, data: &'static [u8]) -> Self {
-        Self { path, data }
+#[derive(Debug, Error)]
+#[error("Failed to unresolve path")]
+pub struct ProjectAssetPathUnresolveError;
+
+impl ProjectAssetResolver {
+    /// Creates a new project asset path resolver.
+    pub fn new(root: &Path) -> Self {
+        Self { root: Arc::from(root) }
+    }
+
+    /// Creates a project asset path resolver that does not have a root.
+    /// 
+    /// Assets paths are resolved as is, without any prefix.
+    pub fn none() -> Self {
+        Self { root: Arc::from(Path::new("")) }
+    }
+
+    /// Resolves a path to a full path.
+    pub fn resolve(&self, path: &AssetPath) -> PathBuf {
+        let path = path.path();
+        
+        self.root.join(path)
+    }
+
+    /// Unresolves a path to an asset path.
+    pub fn unresolve(&self, path: &Path) -> Result<AssetPath, ProjectAssetPathUnresolveError> {
+        let path = path.strip_prefix(&self.root)
+            .map_err(|_| ProjectAssetPathUnresolveError)?;
+
+        Ok(AssetPath::new_project(path))
+    }
+
+    /// Returns the root of the project asset path resolver.
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 }
 
-#[macro_export]
-macro_rules! embed {
-    ($path:expr => $data:expr) => {
-        $crate::BundledAsset::new($crate::AssetPath::new_static($path), $data)
-    };
-}
+static_assertions::assert_impl_all!(ProjectAssetResolver: Send, Sync);
