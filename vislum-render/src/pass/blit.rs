@@ -1,9 +1,13 @@
+use vislum_asset::asset::EmbeddedAsset;
+use vislum_asset::embedded_asset;
 use vislum_system::{Resource, Resources};
 
 use crate::{RenderDevice, ScreenRenderTarget, TextureManager};
 use crate::resource::texture::Texture;
 use crate::cache::storage::Handle;
 use crate::pass::RenderPass;
+
+pub const BLIT_SHADER_ASSET: EmbeddedAsset = embedded_asset!("shaders/blit.wgsl" => include_bytes!("blit.wgsl"));
 
 /// A blit pass.
 /// 

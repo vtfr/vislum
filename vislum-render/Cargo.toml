@@ -11,8 +11,10 @@ atomicow = { workspace = true }
 crossbeam = { workspace = true }
 vislum-system = { path = "../vislum-system" }
 vislum-math = { path = "../vislum-math" }
+vislum-asset = { path = "../vislum-asset" }
 encase = "0.11.2"
 thiserror = { workspace = true }
 bytemuck = "1.20.0"
 smallvec = "1.15.1"
-vislum-asset = { path = "../vislum_asset" }
+log = { workspace = true }
+serde = { workspace = true }

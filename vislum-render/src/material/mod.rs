@@ -7,9 +7,6 @@ use crate::{Handle, RenderDevice, ResourceStorage, ShaderModule};
 /// This is used to create a material through the [`MaterialManager`].
 // #[derive(Serialize, Deserialize)]
 pub struct MaterialDescriptor {
-    /// The name of the material.
-    pub name: String,
-
     /// The vertex shader for the material.
     pub vertex_shader: Handle<ShaderModule>,
 

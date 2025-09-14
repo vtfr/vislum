@@ -3211,6 +3211,8 @@ dependencies = [
  "cgmath",
  "crossbeam",
  "encase",
+ "log",
+ "serde",
  "slotmap",
  "smallvec",
  "thiserror 2.0.16",
@@ -3234,6 +3236,7 @@ dependencies = [
 name = "vislum-system"
 version = "0.1.0"
 dependencies = [
+ "downcast-rs 2.0.2",
  "vislum-system-macros",
 ]
 

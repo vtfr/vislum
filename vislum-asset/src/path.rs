@@ -1,4 +1,5 @@
 use atomicow::CowArc;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use std::{fmt::Display, path::{Path, PathBuf}, sync::Arc};
 
@@ -24,18 +25,43 @@ impl Display for AssetNamespace {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AssetPath {
     namespace: AssetNamespace,
-    path: CowArc<'static, Path>,
+    path: CowArc<'static, str>,
 }
+
+impl Serialize for AssetPath {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for AssetPath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+
+        match AssetPath::try_parse(&s) {
+            Ok(path) => Ok(path),
+            Err(error) => Err(serde::de::Error::custom(error)),
+        }
+    }
+}
+
+
 
 static_assertions::assert_impl_all!(AssetPath: Send, Sync);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Error)]
-#[error("Invalid asset path")]
+#[error("invalid asset path")]
 pub struct AssetPathParseError;
 
 impl AssetPath {
     /// Creates a new asset path.
-    pub fn new(namespace: AssetNamespace, path: &Path) -> Self {
+    pub fn new(namespace: AssetNamespace, path: &str) -> Self {
         Self {
             namespace,
             path: CowArc::new_owned_from_arc(path),
@@ -43,10 +69,18 @@ impl AssetPath {
     }
 
     /// Creates a new project asset path.
-    pub fn new_project(path: &Path) -> Self {
+    pub fn new_project(path: &str) -> Self {
         Self {
             namespace: AssetNamespace::Project,
             path: CowArc::new_owned_from_arc(path),
+        }
+    }
+
+    /// Creates a new embedded asset path.
+    pub const fn new_embedded(path: &'static str) -> Self {
+        Self {
+            namespace: AssetNamespace::Vislum,
+            path: CowArc::Static(path),
         }
     }
 
@@ -60,7 +94,7 @@ impl AssetPath {
             _ => return Err(AssetPathParseError)
         };
 
-        let path = CowArc::new_owned_from_arc(Path::new(rest));
+        let path = CowArc::new_owned_from_arc(rest);
 
         Ok(AssetPath {
             namespace,
@@ -75,13 +109,13 @@ impl AssetPath {
 
     /// Returns the path of the asset.
     pub fn path(&self) -> &Path {
-        &self.path
+        Path::new(self.path.as_ref())
     }
 }
 
 impl Display for AssetPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}://{}", self.namespace, self.path.display())
+        write!(f, "{}://{}", self.namespace, self.path)
     }
 }
 
@@ -122,7 +156,7 @@ impl ProjectAssetResolver {
         let path = path.strip_prefix(&self.root)
             .map_err(|_| ProjectAssetPathUnresolveError)?;
 
-        Ok(AssetPath::new_project(path))
+        Ok(AssetPath::new_project(path.to_str().unwrap()))
     }
 
     /// Returns the root of the project asset path resolver.
