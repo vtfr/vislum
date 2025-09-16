@@ -1,58 +1,39 @@
-use vislum_system::Resource;
+use std::sync::Arc;
 
-use crate::{Handle, RenderDevice, ResourceStorage, ShaderModule};
+use vislum_math::Vector3;
+use wgpu::PipelineCache;
 
-/// A high-level description of a material.
-/// 
-/// This is used to create a material through the [`MaterialManager`].
-// #[derive(Serialize, Deserialize)]
-pub struct MaterialDescriptor {
-    /// The vertex shader for the material.
-    pub vertex_shader: Handle<ShaderModule>,
+use crate::{device::RenderDevice, pipeline::RenderPipeline, resource::ResourceId};
 
-    /// The fragment shader for the material.
-    pub fragment_shader: Handle<ShaderModule>,
+pub struct Color;
+
+pub enum MaterialAttachment {
+    Vector3(String, Vector3),
+    Texture(String, ResourceId<()>)
 }
 
 pub struct Material {
-    pub name: String,
-    pub vertex_shader: Handle<ShaderModule>,
-    pub fragment_shader: Handle<ShaderModule>,
+    attachments: Vec<MaterialAttachment>,
 }
 
-pub enum CreateMaterialError {
-    VertexShaderNotFound,
-    FragmentShaderNotFound,
-    InvalidVertexShader,
-}
-
-#[derive(Resource)]
 pub struct MaterialManager {
     device: RenderDevice,
-    storage: ResourceStorage<Material>,
 }
 
-// impl MaterialManager {
-//     pub fn new(device: RenderDevice) -> Self {
-//         Self { 
-//             device, 
-//             storage: Default::default(),
-//         }
-//     }
+pub struct MaterialDescriptor {
+    
+}
 
-//     pub fn create(
-//         &self, 
-//         descriptor: MaterialDescriptor,
-//         shader_module_manager: &ShaderModuleManager,
-//     ) -> Result<Handle<Material>, CreateMaterialError> {
-//         let vertex_shader = shader_module_manager.get(descriptor.vertex_shader);
-//         let fragment_shader = shader_module_manager.get(descriptor.fragment_shader);
+impl MaterialManager {
+    pub fn new(device: RenderDevice) -> Self {
+        Self { device }
+    }
 
-//         Ok(self.storage.insert(Material {
-//             name: descriptor.name,
-//             vertex_shader,
-//             fragment_shader,
-//         }))
-//     }
-// }
-
+    pub fn create(
+        &mut self, 
+        render_pipeline_manager: &mut PipelineCache,
+        descriptor: &MaterialDescriptor,
+    ) -> Arc<Material> {
+        todo!()
+    }
+}

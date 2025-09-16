@@ -1,119 +1,40 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
-use serde::{Deserialize, Serialize};
-use vislum_asset::path::AssetPath;
+use crate::device::RenderDevice;
 
-use crate::{RenderDevice, ShaderModule, Vertex};
+pub struct PipelineDescriptor {}
 
-pub struct PipelineManager {
+pub struct RenderPipeline {
+
+}
+
+/// A cache of pipelines.
+/// 
+pub struct PipelineCache {
     device: RenderDevice,
+    pipelines: HashMap<PipelineDescriptor, Arc<RenderPipeline>>,
 }
 
-/// The vertex buffer layout for the pipeline.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub enum RenderPipelineVertexBufferLayout {
-    /// The default vertex buffer layout used for rendering meshes.
-    #[default]
-    Mesh,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub enum PrimitiveTopology {
-    #[default]
-    TriangleList,
-}
-
-impl Into<wgpu::PrimitiveTopology> for PrimitiveTopology {
-    fn into(self) -> wgpu::PrimitiveTopology {
-        match self {
-            PrimitiveTopology::TriangleList => wgpu::PrimitiveTopology::TriangleList,
+impl PipelineCache {
+    pub fn create_render_pipeline(&mut self, descriptor: &PipelineDescriptor) -> Arc<RenderPipeline> {
+        if let Some(pipeline) = self.pipelines.get(descriptor) {
+            return pipeline.clone();
         }
-    }
-}
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub enum FrontFace {
-    /// The front face is counter-clockwise.
-    #[default]
-    Ccw,
-
-    /// The front face is clockwise.
-    Cw,
-}
-
-impl Into<wgpu::FrontFace> for FrontFace {
-    fn into(self) -> wgpu::FrontFace {
-        match self {
-            FrontFace::Ccw => wgpu::FrontFace::Ccw,
-            FrontFace::Cw => wgpu::FrontFace::Cw,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub struct PrimitiveState {
-    /// The topology of the primitive.
-    pub topology: PrimitiveTopology,
-
-    /// The front face of the primitive.
-    pub front_face: FrontFace,
-}
-
-pub struct RenderPipelineVertexState {
-    /// The vertex shader asset path used to load the vertex shader.
-    pub shader_module: Arc<ShaderModule>,
-
-    /// The vertex buffer layout for the pipeline.
-    pub render_pipeline_vertex_buffer_layout: RenderPipelineVertexBufferLayout,
-}
-
-pub struct RenderPipelineDescriptor {
-    /// The vertex state for the pipeline.
-    pub vertex_state: RenderPipelineVertexState,
-}
-
-impl PipelineManager {
-    pub fn new(device: RenderDevice) -> Self {
-        Self { device }
-    }
-
-    pub fn create(
-        &mut self, 
-        descriptor: RenderPipelineDescriptor,
-    ) -> ! {
         fn whatever<T>() -> T {
-            unsafe { std::mem::MaybeUninit::uninit().assume_init() }
+            todo!()
         }
-
-        let pipeline_layout = self.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[
-                whatever(),
-                whatever(),
-            ],
-            push_constant_ranges: &[],
-        });
 
         let pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{
             label: None,
             layout: None,
-            vertex: wgpu::VertexState { 
+            vertex: wgpu::VertexState{
                 module: whatever(),
-                entry_point: Some("main"),
-                buffers: &[
-                    wgpu::VertexBufferLayout {
-                        array_stride: 16,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &[wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x4,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                    ],
-                }],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                entry_point: whatever(),
+                compilation_options: Default::default(),
+                buffers: whatever(),
             },
-            primitive: wgpu::PrimitiveState {
+            primitive: wgpu::PrimitiveState{
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
@@ -122,33 +43,27 @@ impl PipelineManager {
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
             },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState{
                 count: 1,
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            fragment: Some(wgpu::FragmentState {
+            fragment: Some(wgpu::FragmentState{
                 module: whatever(),
-                entry_point: Some("main"),
-                targets: &[
-                    Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        blend: None,
-                        write_mask: wgpu::ColorWrites::ALL,
-                    }),
-                ],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                entry_point: whatever(),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState{
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
             }),
             multiview: None,
             cache: None,
         });
+
+        let pipeline = Arc::new(pipeline);
 
         todo!()
     }
