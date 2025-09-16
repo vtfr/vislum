@@ -20,3 +20,4 @@ vislum-asset = { path = "../vislum-asset" }
 vislum-math = { path = "../vislum-math" }
 vislum-system = { path = "../vislum-system" }
 wgpu = { workspace = true }
+bitflags = { workspace = true }
