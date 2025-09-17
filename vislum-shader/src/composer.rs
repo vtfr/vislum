@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
-use crate::directive::{Directive, DirectiveParseError};
+use crate::directive::Directive;
 
 type IncludeId = usize;
 
@@ -23,9 +23,6 @@ pub struct ShaderComposer {
 /// I'll think later about how to handle errors.
 #[derive(Debug, Error)]
 pub enum ComposeError {
-    #[error("directive parse error: {0}")]
-    DirectiveParseError(#[from] DirectiveParseError),
-
     #[error("unmatched #ifdef directive")]
     UnmatchedIfDefError,
 
@@ -70,7 +67,7 @@ impl ShaderComposer {
         
         'outer: while let Some(source) = source_stack.last_mut() {
             while let Some(line) = source.next() {
-                let directive = Directive::parse(line)?;
+                let directive = Directive::parse(line);
 
                 match directive {
                     Directive::Ifdef(identifier) => {

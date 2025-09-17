@@ -2,12 +2,6 @@ use regex::Regex;
 use thiserror::Error;
 use std::sync::LazyLock;
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct InvalidIncludeDirectiveError;
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct InvalidIfDefDirectiveError;
-
 // Static regex patterns compiled once
 static INCLUDE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"#include\s+"([^"]+)""#).unwrap()
@@ -24,13 +18,10 @@ static IFDEF_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// - `Ok(Some(path))`: The line is a valid include directive.
 /// - `Ok(None)`: The line is not an include directive.
 /// - `Err(InvalidIncludeDirectiveError)`: The line is an invalid include directive.
-fn maybe_parse_include(line: &str) -> Result<Option<&str>, InvalidIncludeDirectiveError> {
-    if let Some(caps) = INCLUDE_REGEX.captures(line) {
-        Ok(Some(caps.get(1).unwrap().as_str()))
-    } else if line.trim().starts_with("#include") {
-        Err(InvalidIncludeDirectiveError)
-    } else {
-        Ok(None)
+fn parse_include(line: &str) -> Option<&str> {
+    match INCLUDE_REGEX.captures(line) {
+        Some(caps) => Some(caps.get(1).unwrap().as_str()),
+        None => None
     }
 }
 
@@ -40,13 +31,10 @@ fn maybe_parse_include(line: &str) -> Result<Option<&str>, InvalidIncludeDirecti
 /// - `Ok(Some(identifier))`: The line is a valid "#ifdef" directive.
 /// - `Ok(None)`: The line is not an "#ifdef" directive.
 /// - `Err(InvalidIfDefDirectiveError)`: The line is an invalid "#ifdef" directive.
-fn maybe_parse_ifdef(line: &str) -> Result<Option<&str>, InvalidIfDefDirectiveError> {
-    if let Some(caps) = IFDEF_REGEX.captures(line) {
-        Ok(Some(caps.get(1).unwrap().as_str()))
-    } else if line.trim().starts_with("#ifdef") {
-        Err(InvalidIfDefDirectiveError)
-    } else {
-        Ok(None)
+fn parse_ifdef(line: &str) -> Option<&str> {
+    match IFDEF_REGEX.captures(line) {
+        Some(caps) => Some(caps.get(1).unwrap().as_str()),
+        None => None
     }
 }
 
@@ -69,38 +57,27 @@ pub(crate) enum Directive<'a> {
     Raw(&'a str),
 }
 
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum DirectiveParseError {
-    #[error("invalid #include directive")]
-    InvalidIncludeDirective,
-
-    #[error("invalid #ifdef directive")]
-    InvalidIfDefDirective,
-}
-
 impl<'a> Directive<'a> {
-    pub fn parse(line: &'a str) -> Result<Self, DirectiveParseError> {
+    pub fn parse(line: &'a str) -> Self {
         if is_endif(line) {
-            return Ok(Directive::Endif);
+            return Directive::Endif;
         }
 
         if is_else(line) {
-            return Ok(Directive::Else);
+            return Directive::Else;
         }
 
-        match maybe_parse_include(line) {
-            Ok(Some(include_path)) => return Ok(Directive::Include(include_path)),
-            Ok(None) => {},
-            Err(_) => return Err(DirectiveParseError::InvalidIncludeDirective),
+        match parse_include(line) {
+            Some(include_path) => return Directive::Include(include_path),
+            None => {},
         }
 
-        match maybe_parse_ifdef(line) {
-            Ok(Some(identifier)) => return Ok(Directive::Ifdef(identifier)),
-            Ok(None) => {},
-            Err(_) => return Err(DirectiveParseError::InvalidIfDefDirective),
+        match parse_ifdef(line) {
+            Some(identifier) => return Directive::Ifdef(identifier),
+            None => {},
         }
 
-        Ok(Directive::Raw(line))
+        Directive::Raw(line)
     }
 }
 
@@ -110,51 +87,51 @@ mod tests {
 
     #[test]
     fn test_valid_include() {
-        let result = maybe_parse_include(r#"#include "test.wgsl""#);
-        assert_eq!(result, Ok(Some("test.wgsl")));
+        let result = parse_include(r#"#include "test.wgsl""#);
+        assert_eq!(result, Some("test.wgsl"));
     }
 
     #[test]
     fn test_not_include() {
-        let result = maybe_parse_include("some other line");
-        assert_eq!(result, Ok(None));
+        let result = parse_include("some other line");
+        assert_eq!(result, None);
     }
 
     #[test]
     fn test_invalid_include_no_quotes() {
-        let result = maybe_parse_include("#include test.wgsl");
-        assert_eq!(result, Err(InvalidIncludeDirectiveError));
+        let result = parse_include("#include test.wgsl");
+        assert_eq!(result, None);
     }
 
     #[test]
     fn test_invalid_include_missing_end_quote() {
-        let result = maybe_parse_include(r#"#include "test.wgsl"#);
-        assert_eq!(result, Err(InvalidIncludeDirectiveError));
+        let result = parse_include(r#"#include "test.wgsl"#);
+        assert_eq!(result, None);
     }
 
     #[test]
     fn test_invalid_include_missing_start_quote() {
-        let result = maybe_parse_include(r#"#include test.wgsl""#);
-        assert_eq!(result, Err(InvalidIncludeDirectiveError));
+        let result = parse_include(r#"#include test.wgsl""#);
+        assert_eq!(result, None);
     }
 
     // Tests for maybe_parse_ifdef
     #[test]
     fn test_valid_ifdef() {
-        let result = maybe_parse_ifdef("#ifdef INSTANCED");
-        assert_eq!(result, Ok(Some("INSTANCED")));
+        let result = parse_ifdef("#ifdef INSTANCED");
+        assert_eq!(result, Some("INSTANCED"));
     }
 
     #[test]
     fn test_not_ifdef() {
-        let result = maybe_parse_ifdef("some other line");
-        assert_eq!(result, Ok(None));
+        let result = parse_ifdef("some other line");
+        assert_eq!(result, None);
     }
 
     #[test]
     fn test_invalid_ifdef_lowercase() {
-        let result = maybe_parse_ifdef("#ifdef debug");
-        assert_eq!(result, Err(InvalidIfDefDirectiveError));
+        let result = parse_ifdef("#ifdef debug");
+        assert_eq!(result, None);
     }
 
     // Tests for is_endif
