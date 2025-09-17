@@ -71,6 +71,15 @@ impl<'a> Directive<'a> {
     }
 }
 
+/// Collects all the include directives from a given source.
+/// 
+/// Includes are collected as is, without any validation on their contents.
+/// Callers are responsible for validating the paths are appropriate.
+pub fn collect_includes(source: &str) -> impl Iterator<Item = &str> {
+    source.lines()
+        .filter_map(maybe_parse_include)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
