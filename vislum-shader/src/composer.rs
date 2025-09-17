@@ -17,7 +17,6 @@ struct IncludeSource {
 pub struct ShaderComposer {
     define_identifiers: HashSet<String>,
     include_sources: HashMap<String, IncludeSource>,
-    include_stack: IncludeStack,
 }
 
 /// I'll think later about how to handle errors.
@@ -29,7 +28,6 @@ impl ShaderComposer {
         Self {
             define_identifiers: Default::default(),
             include_sources: Default::default(),
-            include_stack: Default::default(),
         }
     }
 
@@ -48,158 +46,176 @@ impl ShaderComposer {
 
     /// Composes the shader source into a single string, 
     /// consuming the [`ShaderComposer`].
-    pub fn compose(self, shader_source: &str) -> Result<String, Error> {
+    pub fn compose(
+        &self, 
+        shader_source: &str,
+    ) -> Result<String, Error> {
         let mut output = String::with_capacity(shader_source.len());
-        self.process_source(&mut output, shader_source)?;
-        Ok(output)
-    }
-
-    /// Composes the shader source into a single string.
-    ///
-    /// This function will parse the shader source and compose it into a single string.
-    /// It will also handle the include directives and the define directives.
-    fn process_source(&self, output: &mut String, shader_source: &str) -> Result<(), Error> {
-        // Tracks the number of `#ifdef` directives.
-        // 
-        // Each source needs have an equal number of `#ifdef` and `#endif` directives.
-        let mut ifdef_counter = IfDefCounter::default();
+        let mut directive_frame_stack = DirectiveFrameStack::default();
+        let mut include_stack = IncludeStack::default();
+        let mut source_stack = vec![shader_source.lines()];
         
-        for line in shader_source.lines() {
-            if is_endif(line) {
-                // Decrement the counter.
-                // 
-                // If we can't decrement the counter, then the `#endif` directive is not matched with
-                // a previous `#ifdef` directive.
-                if !ifdef_counter.dec() {
-                    return Err(Error);
-                }
+        'outer: while let Some(source) = source_stack.last_mut() {
+            while let Some(line) = source.next() {
+                let directive = Directive::parse(line)?;
 
-                // Continue to the next line.
-                continue;
+                match directive {
+                    Directive::Ifdef(identifier) => {
+                        let defined = self.define_identifiers.contains(identifier);
+                        directive_frame_stack.push(defined);
+                    }
+                    Directive::Else => {
+                        directive_frame_stack.branch_if_active_and_not_taken()
+                            .map_err(|_| Error)?;
+                    }
+                    Directive::Endif => {
+                        directive_frame_stack.pop()
+                            .map_err(|_| Error)?;
+                    }
+                    Directive::Include(include_path) if directive_frame_stack.active() => {
+                        let IncludeSource { index, source: include_source } = self.include_sources
+                            .get(include_path)
+                            .ok_or(Error)?;
+
+                            if !include_stack.push(*index) {
+                                return Err(Error); // Circular include detected
+                            }
+
+                            source_stack.push(include_source.lines());
+                            continue 'outer;
+                    }
+                    Directive::Raw(line) if directive_frame_stack.active() => {
+                        output.push_str(line);
+                        output.push('\n');
+                    }
+                    _ => {}
+                };
             }
 
-            if let Some(identifier) = maybe_parse_ifdef(line).map_err(|_| Error)? {
-                // Increment the counter.
-                ifdef_counter.inc();
-
-                // If the identifier is not defined, then we need to skip the lines until
-                // we find the matching `#endif` directive.
-                if !self.define_identifiers.contains(identifier) {
-                    ifdef_counter.set_skipping();
-                    continue;
-                }
-            }
-
-            // If we're in an unmatching `#ifdef` block, then we can skip the line.
-            if ifdef_counter.is_skipping() {
-                continue;
-            }
-
-            // If the line is an include directive.
-            if let Some(include_path) = maybe_parse_include(line).map_err(|_| Error)? {
-                self.process_include(output, include_path)?;
-                continue;
-            }
-
-            // If the line is not a directive, then we simply add it to the output.
-            output.push_str(line);
-            output.push('\n');
+            // Pop the source.
+            include_stack.pop();
+            source_stack.pop();
         }
 
-        if !ifdef_counter.is_zero() {
+        if !directive_frame_stack.is_empty() {
             // If the counter is not 0, then we have unmatched `#ifdef` directives.
             return Err(Error);
         }
 
-        Ok(())
+        Ok(output)
     }
+}
 
-    fn process_include(&self, output: &mut String, include_path: &str) -> Result<(), Error> {
-        let IncludeSource { index, source } = self.include_sources.get(include_path)
-            .ok_or(Error)?;
+pub enum Directive<'a> {
+    Ifdef(&'a str),
+    Else,
+    Endif,
+    Include(&'a str),
+    Raw(&'a str),
+}
 
-        // Check for circular includes
-        if !self.include_stack.push(*index) {
-            return Err(Error); // Circular include detected
+impl<'a> Directive<'a> {
+    pub fn parse(line: &'a str) -> Result<Self, Error> {
+        if is_endif(line) {
+            return Ok(Directive::Endif);
         }
-        
-        // Process the included source
-        let result = self.process_source(output, &source);
-        
-        // Remove from include stack
-        self.include_stack.pop();
-        
-        result
+
+        if is_else(line) {
+            return Ok(Directive::Else);
+        }
+
+        if let Some(include_path) = maybe_parse_include(line).map_err(|_| Error)? {
+            return Ok(Directive::Include(include_path));
+        }
+
+        if let Some(identifier) = maybe_parse_ifdef(line).map_err(|_| Error)? {
+            return Ok(Directive::Ifdef(identifier));
+        }
+
+        Ok(Directive::Raw(line))
     }
 }
 
 #[derive(Default)]
 struct IncludeStack {
-    stack: RefCell<Vec<IncludeId>>,
+    stack: Vec<IncludeId>,
 }
 
 impl IncludeStack {
-    pub fn push(&self, include_id: IncludeId) -> bool {
-        let mut stack = self.stack.borrow_mut();
-        if stack.contains(&include_id) {
+    pub fn push(&mut self, include_id: IncludeId) -> bool {
+        if self.stack.contains(&include_id) {
             return false;
         }
 
-        stack.push(include_id);
+        self.stack.push(include_id);
         true
     }
 
-    pub fn pop(&self) { 
+    pub fn pop(&mut self) { 
         // Pop the path from the stack.
-        let mut stack = self.stack.borrow_mut();
-        let _ = stack.pop();
+        let _ = self.stack.pop();
     }
 }
 
+struct DirectiveFrame {
+    /// Whether the current frame contains any branch that was taken.
+    taken: bool,
+    
+    /// Whether the previous frame was active.
+    parent_active: bool,
+}
+
+struct UnmatchedIfDefError;
 
 #[derive(Default)]
-struct IfDefCounter {
-    count: u8,
-    skip_until: Option<u8>,
+struct DirectiveFrameStack {
+    stack: Vec<DirectiveFrame>,
 }
 
-impl IfDefCounter {
-    pub fn inc(&mut self) {
-        self.count += 1;
+impl DirectiveFrameStack {
+    /// Pushes a new frame.
+    pub fn push(&mut self, branch_taken: bool) {
+        let parent_active = self.stack.last()
+            .map(|frame| frame.parent_active)
+            .unwrap_or(true);
+
+        self.stack.push(DirectiveFrame {
+            taken: branch_taken,
+            parent_active,
+        });
     }
-    
-    /// Decrements the counter.
+
+    /// Branches the current frame if it is active and hasn't been branched yet.
+    pub fn branch_if_active_and_not_taken(&mut self) -> Result<(), UnmatchedIfDefError> {
+        let last = self.stack.last_mut()
+            .ok_or(UnmatchedIfDefError)?;
+
+        if last.parent_active && !last.taken {
+            last.taken = true;
+        }
+
+        Ok(())
+    }
+
+    /// Returns whether the current frame is active.
+    pub fn active(&self) -> bool {
+        self.stack.last()
+            .map(|frame| frame.parent_active && frame.taken)
+            .unwrap_or(true)
+    }
+
+    /// Pops the current frame.
     /// 
-    /// Returns false if decrementing would result in a negative value.
-    pub fn dec(&mut self) -> bool {
-        if self.count == 0 {
-            return false;
-        }
+    /// Retruns [`UnmatchedIfDefError`] if the stack is empty.
+    pub fn pop(&mut self) -> Result<(), UnmatchedIfDefError> {
+        self.stack.pop()
+            .ok_or(UnmatchedIfDefError)?;
 
-        // If we're skipping, and the counter is the same as the skip until, 
-        // then we can resume reading lines.
-        if self.is_same_block_as_unmatched_ifdef() {
-            self.skip_until = None;
-        }
-
-        self.count -= 1;
-        true
+        Ok(())
     }
 
-    pub fn is_same_block_as_unmatched_ifdef(&self) -> bool {
-        Some(self.count) == self.skip_until
-    }
-
-    pub fn is_skipping(&self) -> bool {
-        self.skip_until.is_some()
-    }
-
-    pub fn set_skipping(&mut self) {
-        self.skip_until = Some(self.count);
-    }
-
-    pub fn is_zero(&self) -> bool {
-        self.count == 0
+    pub fn is_empty(&self) -> bool {
+        self.stack.is_empty()
     }
 }
 
