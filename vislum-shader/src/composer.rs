@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
-use crate::directive::Directive;
+use thiserror::Error;
+
+use crate::directive::{Directive, DirectiveParseError};
 
 type IncludeId = usize;
 
@@ -19,8 +21,20 @@ pub struct ShaderComposer {
 }
 
 /// I'll think later about how to handle errors.
-#[derive(Debug)]
-pub struct Error;
+#[derive(Debug, Error)]
+pub enum ComposeError {
+    #[error("directive parse error: {0}")]
+    DirectiveParseError(#[from] DirectiveParseError),
+
+    #[error("unmatched #ifdef directive")]
+    UnmatchedIfDefError,
+
+    #[error("cyclic reference in path: {0:?}")]
+    CyclicReference(Vec<String>),
+
+    #[error("include source not found: {0}")]
+    IncludeSourceNotFound(String),
+}
 
 impl ShaderComposer {
     pub fn new() -> Self {
@@ -48,7 +62,7 @@ impl ShaderComposer {
     pub fn compose(
         &self, 
         shader_source: &str,
-    ) -> Result<String, Error> {
+    ) -> Result<String, ComposeError> {
         let mut output = String::with_capacity(shader_source.len());
         let mut directive_frame_stack = DirectiveFrameStack::default();
         let mut include_stack = IncludeStack::default();
@@ -56,8 +70,7 @@ impl ShaderComposer {
         
         'outer: while let Some(source) = source_stack.last_mut() {
             while let Some(line) = source.next() {
-                let directive = Directive::parse(line)
-                    .map_err(|_| Error)?;
+                let directive = Directive::parse(line)?;
 
                 match directive {
                     Directive::Ifdef(identifier) => {
@@ -66,19 +79,33 @@ impl ShaderComposer {
                     }
                     Directive::Else => {
                         directive_frame_stack.branch_if_active_and_not_taken()
-                            .map_err(|_| Error)?;
+                            .map_err(|_| ComposeError::UnmatchedIfDefError)?;
                     }
                     Directive::Endif => {
                         directive_frame_stack.pop()
-                            .map_err(|_| Error)?;
+                            .map_err(|_| ComposeError::UnmatchedIfDefError)?;
                     }
                     Directive::Include(include_path) if directive_frame_stack.active() => {
                         let IncludeSource { index, source: include_source } = self.include_sources
                             .get(include_path)
-                            .ok_or(Error)?;
+                            .ok_or(ComposeError::IncludeSourceNotFound(include_path.into()))?;
 
                             if !include_stack.push(*index) {
-                                return Err(Error); // Circular include detected
+                                let include_path_vec = include_stack.iter()
+                                    .map(|id| self.include_sources
+                                            .iter()
+                                            .find_map(|(_, include_source)| {
+                                                if include_source.index == id {
+                                                    Some(include_source.source.clone())
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .unwrap()
+                                    )
+                                    .collect();
+
+                                return Err(ComposeError::CyclicReference(include_path_vec)); // Circular include detected
                             }
 
                             source_stack.push(include_source.lines());
@@ -99,7 +126,7 @@ impl ShaderComposer {
 
         if !directive_frame_stack.is_empty() {
             // If the counter is not 0, then we have unmatched `#ifdef` directives.
-            return Err(Error);
+            return Err(ComposeError::UnmatchedIfDefError);
         }
 
         Ok(output)
@@ -119,6 +146,10 @@ impl IncludeStack {
 
         self.stack.push(include_id);
         true
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = IncludeId> {
+        self.stack.iter().copied()
     }
 
     pub fn pop(&mut self) { 

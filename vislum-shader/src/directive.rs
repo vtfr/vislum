@@ -1,4 +1,5 @@
 use regex::Regex;
+use thiserror::Error;
 use std::sync::LazyLock;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -68,9 +69,12 @@ pub(crate) enum Directive<'a> {
     Raw(&'a str),
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum DirectiveParseError {
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum DirectiveParseError {
+    #[error("invalid #include directive")]
     InvalidIncludeDirective,
+
+    #[error("invalid #ifdef directive")]
     InvalidIfDefDirective,
 }
 
