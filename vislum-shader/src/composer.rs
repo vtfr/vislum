@@ -1,6 +1,5 @@
-use std::{cell::RefCell, collections::{HashMap, HashSet}, rc::Rc};
-
-use crate::directive::{is_else, is_endif, maybe_parse_ifdef, maybe_parse_include};
+use std::collections::{HashMap, HashSet};
+use crate::directive::Directive;
 
 type IncludeId = usize;
 
@@ -57,7 +56,8 @@ impl ShaderComposer {
         
         'outer: while let Some(source) = source_stack.last_mut() {
             while let Some(line) = source.next() {
-                let directive = Directive::parse(line)?;
+                let directive = Directive::parse(line)
+                    .map_err(|_| Error)?;
 
                 match directive {
                     Directive::Ifdef(identifier) => {
@@ -103,36 +103,6 @@ impl ShaderComposer {
         }
 
         Ok(output)
-    }
-}
-
-pub enum Directive<'a> {
-    Ifdef(&'a str),
-    Else,
-    Endif,
-    Include(&'a str),
-    Raw(&'a str),
-}
-
-impl<'a> Directive<'a> {
-    pub fn parse(line: &'a str) -> Result<Self, Error> {
-        if is_endif(line) {
-            return Ok(Directive::Endif);
-        }
-
-        if is_else(line) {
-            return Ok(Directive::Else);
-        }
-
-        if let Some(include_path) = maybe_parse_include(line).map_err(|_| Error)? {
-            return Ok(Directive::Include(include_path));
-        }
-
-        if let Some(identifier) = maybe_parse_ifdef(line).map_err(|_| Error)? {
-            return Ok(Directive::Ifdef(identifier));
-        }
-
-        Ok(Directive::Raw(line))
     }
 }
 
@@ -225,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_basic_composition() {
-        let mut composer = ShaderComposer::new();
+        let composer = ShaderComposer::new();
         let shader_source = r#"
 @vertex
 fn vs_main() -> @builtin(position) vec4<f32> {
@@ -265,7 +235,7 @@ fn vs_main() -> @builtin(position) vec4<f32> {
 
     #[test]
     fn test_ifdef_not_defined() {
-        let mut composer = ShaderComposer::new();
+        let composer = ShaderComposer::new();
         // Don't add DEBUG define
         
         let shader_source = r#"

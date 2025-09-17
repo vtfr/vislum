@@ -23,7 +23,7 @@ static IFDEF_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// - `Ok(Some(path))`: The line is a valid include directive.
 /// - `Ok(None)`: The line is not an include directive.
 /// - `Err(InvalidIncludeDirectiveError)`: The line is an invalid include directive.
-pub fn maybe_parse_include(line: &str) -> Result<Option<&str>, InvalidIncludeDirectiveError> {
+fn maybe_parse_include(line: &str) -> Result<Option<&str>, InvalidIncludeDirectiveError> {
     if let Some(caps) = INCLUDE_REGEX.captures(line) {
         Ok(Some(caps.get(1).unwrap().as_str()))
     } else if line.trim().starts_with("#include") {
@@ -39,7 +39,7 @@ pub fn maybe_parse_include(line: &str) -> Result<Option<&str>, InvalidIncludeDir
 /// - `Ok(Some(identifier))`: The line is a valid "#ifdef" directive.
 /// - `Ok(None)`: The line is not an "#ifdef" directive.
 /// - `Err(InvalidIfDefDirectiveError)`: The line is an invalid "#ifdef" directive.
-pub fn maybe_parse_ifdef(line: &str) -> Result<Option<&str>, InvalidIfDefDirectiveError> {
+fn maybe_parse_ifdef(line: &str) -> Result<Option<&str>, InvalidIfDefDirectiveError> {
     if let Some(caps) = IFDEF_REGEX.captures(line) {
         Ok(Some(caps.get(1).unwrap().as_str()))
     } else if line.trim().starts_with("#ifdef") {
@@ -50,15 +50,55 @@ pub fn maybe_parse_ifdef(line: &str) -> Result<Option<&str>, InvalidIfDefDirecti
 }
 
 /// Checks if the line is a "#endif" directive.
-pub fn is_endif(line: &str) -> bool {
+fn is_endif(line: &str) -> bool {
     line.trim() == "#endif"
 }
 
 /// Checks if the line is a "#else" directive.
-pub fn is_else(line: &str) -> bool {
+fn is_else(line: &str) -> bool {
     line.trim() == "#else"
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Directive<'a> {
+    Include(&'a str),
+    Ifdef(&'a str),
+    Else,
+    Endif,
+    Raw(&'a str),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum DirectiveParseError {
+    InvalidIncludeDirective,
+    InvalidIfDefDirective,
+}
+
+impl<'a> Directive<'a> {
+    pub fn parse(line: &'a str) -> Result<Self, DirectiveParseError> {
+        if is_endif(line) {
+            return Ok(Directive::Endif);
+        }
+
+        if is_else(line) {
+            return Ok(Directive::Else);
+        }
+
+        match maybe_parse_include(line) {
+            Ok(Some(include_path)) => return Ok(Directive::Include(include_path)),
+            Ok(None) => {},
+            Err(_) => return Err(DirectiveParseError::InvalidIncludeDirective),
+        }
+
+        match maybe_parse_ifdef(line) {
+            Ok(Some(identifier)) => return Ok(Directive::Ifdef(identifier)),
+            Ok(None) => {},
+            Err(_) => return Err(DirectiveParseError::InvalidIfDefDirective),
+        }
+
+        Ok(Directive::Raw(line))
+    }
+}
 
 #[cfg(test)]
 mod tests {
