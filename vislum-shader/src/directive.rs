@@ -45,30 +45,29 @@ pub(crate) enum Directive<'a> {
     Ifdef(&'a str),
     Else,
     Endif,
-    Raw(&'a str),
 }
 
 impl<'a> Directive<'a> {
-    pub fn parse(line: &'a str) -> Self {
+    pub fn parse(line: &'a str) -> Option<Self> {
         if is_endif(line) {
-            return Directive::Endif;
+            return Some(Directive::Endif);
         }
 
         if is_else(line) {
-            return Directive::Else;
+            return Some(Directive::Else);
         }
 
         match maybe_parse_include(line) {
-            Some(include_path) => return Directive::Include(include_path),
+            Some(include_path) => return Some(Directive::Include(include_path)),
             None => {},
         }
 
         match maybe_parse_ifdef(line) {
-            Some(identifier) => return Directive::Ifdef(identifier),
+            Some(identifier) => return Some(Directive::Ifdef(identifier)),
             None => {},
         }
 
-        Directive::Raw(line)
+        None
     }
 }
 

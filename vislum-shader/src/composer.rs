@@ -70,19 +70,19 @@ impl ShaderComposer {
                 let directive = Directive::parse(line);
 
                 match directive {
-                    Directive::Ifdef(identifier) => {
+                    Some(Directive::Ifdef(identifier)) => {
                         let defined = self.define_identifiers.contains(identifier);
                         directive_frame_stack.push(defined);
                     }
-                    Directive::Else => {
+                    Some(Directive::Else) => {
                         directive_frame_stack.branch_if_active_and_not_taken()
                             .map_err(|_| ComposeError::UnmatchedIfDefError)?;
                     }
-                    Directive::Endif => {
+                    Some(Directive::Endif) => {
                         directive_frame_stack.pop()
                             .map_err(|_| ComposeError::UnmatchedIfDefError)?;
                     }
-                    Directive::Include(include_path) if directive_frame_stack.active() => {
+                    Some(Directive::Include(include_path)) if directive_frame_stack.active() => {
                         let IncludeSource { index, source: include_source } = self.include_sources
                             .get(include_path)
                             .ok_or(ComposeError::IncludeSourceNotFound(include_path.into()))?;
@@ -108,7 +108,7 @@ impl ShaderComposer {
                             source_stack.push(include_source.lines());
                             continue 'outer;
                     }
-                    Directive::Raw(line) if directive_frame_stack.active() => {
+                    None if directive_frame_stack.active() => {
                         output.push_str(line);
                         output.push('\n');
                     }
