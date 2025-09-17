@@ -1,5 +1,4 @@
 use regex::Regex;
-use thiserror::Error;
 use std::sync::LazyLock;
 
 // Static regex patterns compiled once
@@ -13,12 +12,7 @@ static IFDEF_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 
 
 /// Attempts to parse an include directive from the line.
-///
-/// Returns:
-/// - `Ok(Some(path))`: The line is a valid include directive.
-/// - `Ok(None)`: The line is not an include directive.
-/// - `Err(InvalidIncludeDirectiveError)`: The line is an invalid include directive.
-fn parse_include(line: &str) -> Option<&str> {
+fn maybe_parse_include(line: &str) -> Option<&str> {
     match INCLUDE_REGEX.captures(line) {
         Some(caps) => Some(caps.get(1).unwrap().as_str()),
         None => None
@@ -26,12 +20,7 @@ fn parse_include(line: &str) -> Option<&str> {
 }
 
 /// Attempts to parse an "#ifdef" directive from the line.
-///
-/// Returns:
-/// - `Ok(Some(identifier))`: The line is a valid "#ifdef" directive.
-/// - `Ok(None)`: The line is not an "#ifdef" directive.
-/// - `Err(InvalidIfDefDirectiveError)`: The line is an invalid "#ifdef" directive.
-fn parse_ifdef(line: &str) -> Option<&str> {
+fn maybe_parse_ifdef(line: &str) -> Option<&str> {
     match IFDEF_REGEX.captures(line) {
         Some(caps) => Some(caps.get(1).unwrap().as_str()),
         None => None
@@ -39,11 +28,13 @@ fn parse_ifdef(line: &str) -> Option<&str> {
 }
 
 /// Checks if the line is a "#endif" directive.
+#[inline]
 fn is_endif(line: &str) -> bool {
     line.trim() == "#endif"
 }
 
 /// Checks if the line is a "#else" directive.
+#[inline]
 fn is_else(line: &str) -> bool {
     line.trim() == "#else"
 }
@@ -67,12 +58,12 @@ impl<'a> Directive<'a> {
             return Directive::Else;
         }
 
-        match parse_include(line) {
+        match maybe_parse_include(line) {
             Some(include_path) => return Directive::Include(include_path),
             None => {},
         }
 
-        match parse_ifdef(line) {
+        match maybe_parse_ifdef(line) {
             Some(identifier) => return Directive::Ifdef(identifier),
             None => {},
         }
@@ -87,50 +78,50 @@ mod tests {
 
     #[test]
     fn test_valid_include() {
-        let result = parse_include(r#"#include "test.wgsl""#);
+        let result = maybe_parse_include(r#"#include "test.wgsl""#);
         assert_eq!(result, Some("test.wgsl"));
     }
 
     #[test]
     fn test_not_include() {
-        let result = parse_include("some other line");
+        let result = maybe_parse_include("some other line");
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_invalid_include_no_quotes() {
-        let result = parse_include("#include test.wgsl");
+        let result = maybe_parse_include("#include test.wgsl");
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_invalid_include_missing_end_quote() {
-        let result = parse_include(r#"#include "test.wgsl"#);
+        let result = maybe_parse_include(r#"#include "test.wgsl"#);
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_invalid_include_missing_start_quote() {
-        let result = parse_include(r#"#include test.wgsl""#);
+        let result = maybe_parse_include(r#"#include test.wgsl""#);
         assert_eq!(result, None);
     }
 
     // Tests for maybe_parse_ifdef
     #[test]
     fn test_valid_ifdef() {
-        let result = parse_ifdef("#ifdef INSTANCED");
+        let result = maybe_parse_ifdef("#ifdef INSTANCED");
         assert_eq!(result, Some("INSTANCED"));
     }
 
     #[test]
     fn test_not_ifdef() {
-        let result = parse_ifdef("some other line");
+        let result = maybe_parse_ifdef("some other line");
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_invalid_ifdef_lowercase() {
-        let result = parse_ifdef("#ifdef debug");
+        let result = maybe_parse_ifdef("#ifdef debug");
         assert_eq!(result, None);
     }
 
