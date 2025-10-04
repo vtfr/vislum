@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 regex = "1.11.2"
 thiserror = { workspace = true }
+uuid = { workspace = true }
+spirv-cross2 = { version = "0.4.6", default-features = false }

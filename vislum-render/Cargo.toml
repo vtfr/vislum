@@ -4,20 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-atomicow = { workspace = true }
-bytemuck = "1.20.0"
-cgmath = "0.18.0"
-crossbeam = { workspace = true }
-encase = "0.11.2"
+ash-window = { workspace = true }
+winit = { workspace = true }
 log = { workspace = true }
-naga = { workspace = true }
-serde = { workspace = true }
-slotmap = "1.0"
-smallvec = "1.15.1"
-static_assertions = { workspace = true }
 thiserror = { workspace = true }
-vislum-asset = { path = "../vislum-asset" }
-vislum-math = { path = "../vislum-math" }
-vislum-system = { path = "../vislum-system" }
-wgpu = { workspace = true }
-bitflags = { workspace = true }
+raw-window-handle = "0.6.2"
+ash = "0.38.0"
+static_assertions.workspace = true

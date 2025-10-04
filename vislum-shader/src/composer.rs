@@ -60,7 +60,7 @@ impl ShaderComposer {
                 let directive = Directive::parse(line);
 
                 match directive {
-                    Some(Directive::Ifdef(identifier)) => {
+                    Some(Directive::IfDef(identifier)) => {
                         let defined = self.define_identifiers.contains(identifier);
                         directive_frame_stack.push(defined);
                     }
@@ -73,7 +73,7 @@ impl ShaderComposer {
                                 line: line_number,
                             })?;
                     }
-                    Some(Directive::Endif) => {
+                    Some(Directive::EndIf) => {
                         directive_frame_stack.pop().map_err(|_| ComposeError {
                             ty: ComposeErrorType::UnmatchedIfDefError,
                             path: source.path.to_string(),
@@ -120,7 +120,6 @@ impl ShaderComposer {
         }
 
         if !directive_frame_stack.is_empty() {
-            // If the counter is not 0, then we have unmatched `#ifdef` directives.
             return Err(ComposeError {
                 ty: ComposeErrorType::UnmatchedIfDefError,
                 path: path.to_string(),

@@ -42,15 +42,15 @@ fn is_else(line: &str) -> bool {
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Directive<'a> {
     Include(&'a str),
-    Ifdef(&'a str),
+    IfDef(&'a str),
     Else,
-    Endif,
+    EndIf,
 }
 
 impl<'a> Directive<'a> {
     pub fn parse(line: &'a str) -> Option<Self> {
         if is_endif(line) {
-            return Some(Directive::Endif);
+            return Some(Directive::EndIf);
         }
 
         if is_else(line) {
@@ -63,7 +63,7 @@ impl<'a> Directive<'a> {
         }
 
         match maybe_parse_ifdef(line) {
-            Some(identifier) => return Some(Directive::Ifdef(identifier)),
+            Some(identifier) => return Some(Directive::IfDef(identifier)),
             None => {},
         }
 

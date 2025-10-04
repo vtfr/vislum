@@ -1,0 +1,10 @@
+[package]
+name = "vislum-test"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vislum-shader = { path = "../vislum-shader" }
+vislum-render = { path = "../vislum-render" }
+winit = { workspace = true }
+env_logger = { workspace = true }
