@@ -11,3 +11,4 @@ thiserror = { workspace = true }
 raw-window-handle = "0.6.2"
 ash = "0.38.0"
 static_assertions.workspace = true
+anyhow = "1.0.99"

@@ -85,7 +85,7 @@ fn main() {
 
     let physical_devices = instance.enumerate_physical_devices();
     for (index, physical_device) in physical_devices.iter().enumerate() {
-        println!("Physical device {index}: {physical_device:#?}");
+        // println!("Physical device {index}: {physical_device:#?}");
     }
 
     let device = instance.create_device(physical_devices.into_iter().next().unwrap());

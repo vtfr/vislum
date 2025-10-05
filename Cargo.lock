@@ -3330,6 +3330,7 @@ dependencies = [
 name = "vislum-render"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "ash",
  "ash-window",
  "log",

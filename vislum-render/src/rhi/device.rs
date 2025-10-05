@@ -3,8 +3,8 @@ use ash::vk;
 use crate::rhi::{PhysicalDevice, VulkanHandle};
 
 pub struct Device {
-    pub(crate) device: ash::Device,
-    pub(crate) physical_device: PhysicalDevice,
+    device: ash::Device,
+    fns: ash::khr::swapchain::Device,
 }
 
 impl VulkanHandle for Device {
