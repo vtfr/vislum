@@ -16,11 +16,12 @@ pub struct AssetLoadersBuilder {
 
 impl AssetLoadersBuilder {
     /// Adds a loader to the collection.
-    pub fn add<L>(&mut self, loader: L)
+    pub fn add<L>(&mut self, loader: L) -> &mut Self
     where
         L: ErasedAssetLoader + 'static,
     {
         self.loaders.push(Arc::new(loader));
+        self
     }
 
     /// Builds the collection of loaders.

@@ -27,6 +27,11 @@ impl AssetDatabaseEntry {
         &self.state
     }
 
+    /// Returns whether the asset is loaded.
+    pub fn loaded(&self) -> bool {
+        matches!(self.state, AssetState::Loaded(_))
+    }
+
     /// Returns the dependencies of the asset.
     pub fn dependencies(&self) -> &HashSet<AssetPath> {
         &self.dependencies
@@ -52,12 +57,12 @@ pub struct AssetDatabase {
 
 impl AssetDatabase {
     /// Returns an entry for the given path.
-    pub fn get_asset_id_by_path(&self, path: &AssetPath) -> Option<AssetId> {
+    pub fn get_id_by_path(&self, path: &AssetPath) -> Option<AssetId> {
         self.path_to_id.get(path).copied()
     }
 
     /// Returns an entry for the given AssetId.
-    pub fn get_entry_by_id(&self, id: AssetId) -> Option<&AssetDatabaseEntry> {
+    pub fn get(&self, id: AssetId) -> Option<&AssetDatabaseEntry> {
         self.assets.get(id)
     }
 
@@ -84,6 +89,11 @@ impl AssetDatabase {
         id
     }
 
+    /// Returns an iterator over all assets in the database.
+    pub fn iter(&self) -> impl Iterator<Item = (AssetId, &AssetDatabaseEntry)> {
+        self.assets.iter()
+    }
+
     /// Updates an asset to the loaded state.
     pub fn set_asset_loaded(&mut self, id: AssetId, asset: Arc<dyn Asset>, dependencies: HashSet<AssetPath>) {
         if let Some(entry) = self.assets.get_mut(id) {
@@ -104,10 +114,5 @@ impl AssetDatabase {
         if let Some(entry) = self.assets.remove(id) {
             self.path_to_id.remove(entry.path());
         }
-    }
-
-    /// Gets the AssetId for a given path.
-    pub fn get_id_by_path(&self, path: &AssetPath) -> Option<AssetId> {
-        self.path_to_id.get(path).cloned()
     }
 }

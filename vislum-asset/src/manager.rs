@@ -1,14 +1,17 @@
-use std::{collections::HashSet, sync::{Arc, Mutex}};
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 
 use crossbeam::channel::{Receiver, Sender};
 use thiserror::Error;
 
 use crate::{
-    asset::{Asset, AssetId, InternalAssetEvent, LoadAssetCompletionEvent}, 
-    database::{AssetDatabase, AssetState}, 
-    loader::{AssetLoaders, LoadContext}, 
-    path::AssetPath, 
-    vfs::{VirtualFileSystem, VirtualFileSystemEntry}
+    asset::{Asset, AssetId, InternalAssetEvent, LoadAssetCompletionEvent},
+    database::{AssetDatabase, AssetState},
+    loader::{AssetLoaders, LoadContext},
+    path::AssetPath,
+    vfs::{VirtualFileSystem, VirtualFileSystemEntry},
 };
 
 /// The shared, mutable state of the asset manager.
@@ -24,8 +27,8 @@ pub struct AssetManagerShared {
 impl AssetManagerShared {
     /// Adds a virtual filesystem entry to the asset manager.
     pub fn add_virtual_fs(&mut self, virtual_fs: VirtualFileSystemEntry) {
-        let replaced =self.virtual_fs.add(virtual_fs);
-        
+        let replaced = self.virtual_fs.add(virtual_fs);
+
         // Untrack removed resources.
         if let Some(replaced) = replaced {
             // Find and remove assets that were using the replaced filesystem
@@ -41,13 +44,13 @@ impl AssetManagerShared {
 pub struct AssetManager {
     /// The receiver for the internal events.
     internal_events_rx: Receiver<InternalAssetEvent>,
-    
+
     /// The sender for the internal events.
     internal_events_tx: Sender<InternalAssetEvent>,
-    
+
     /// The loaders for the assets.
     loaders: AssetLoaders,
-    
+
     /// The shared, mutable state of the asset manager.
     shared: Arc<Mutex<AssetManagerShared>>,
 }
@@ -79,37 +82,34 @@ impl AssetManager {
         }
     }
 
-    pub fn get<T: Asset>(&self, id: AssetId) -> Result<Arc<T>, AssetError> {
-        let asset = self.get_untyped(id)?;
-        match asset.clone().downcast_arc::<T>() {
-            Ok(asset) => Ok(asset),
-            Err(_) => Err(AssetError::IncompatibleType),
-        }
+    /// Gets an asset by its ID.
+    pub fn get<T: Asset>(&self, id: AssetId) -> Option<Arc<T>> {
+        self.get_untyped(id)?.clone().downcast_arc::<T>().ok()
     }
 
-    pub fn get_untyped(&self, id: AssetId) -> Result<Arc<dyn Asset>, AssetError> {
+    /// Gets an untyped asset by its ID.
+    pub fn get_untyped(&self, id: AssetId) -> Option<Arc<dyn Asset>> {
         let shared = self.shared.lock().unwrap();
-        let asset_entry = shared.database.get_entry_by_id(id)
-            .ok_or(AssetError::NotFound)?;
+        let asset_entry = shared.database.get(id)?;
 
         match asset_entry.state() {
-            AssetState::Loaded(asset) => Ok(asset.clone()),
-            AssetState::Loading => Err(AssetError::Loading),
-            AssetState::Failed(_) => Err(AssetError::Failed),
+            AssetState::Loaded(asset) => Some(asset.clone()),
+            AssetState::Loading => None,
+            AssetState::Failed(_) => None,
         }
     }
 
     /// Loads an asset.
-    /// 
-    /// Asset loading is done in the background. Once an asset is loaded, 
+    ///
+    /// Asset loading is done in the background. Once an asset is loaded,
     /// callers can retrieve it by calling [`AssetManager::get`].
     /// Returns the AssetId for the asset being loaded.
     pub fn load(&mut self, path: AssetPath) -> AssetId {
         let mut shared = self.shared.lock().unwrap();
-        
+
         // Check if the asset is already being loaded or loaded,
         // if so, return the existing ID.
-        if let Some(id) = shared.database.get_asset_id_by_path(&path) {
+        if let Some(id) = shared.database.get_id_by_path(&path) {
             return id;
         }
 
@@ -122,7 +122,7 @@ impl AssetManager {
             loaders: self.loaders.clone(),
             dependencies: Default::default(),
         };
-        
+
         let internal_events_tx = self.internal_events_tx.clone();
 
         // Spawn a thread to load the asset.
@@ -142,6 +142,16 @@ impl AssetManager {
         id
     }
 
+    /// Returns whether all assets are loaded.
+    pub fn ready(&self) -> bool {
+        let shared = self.shared.lock().unwrap();
+
+        shared
+            .database
+            .iter()
+            .all(|(_, entry)| entry.loaded())
+    }
+
     /// Adds a virtual filesystem entry to the asset manager.
     pub fn add_virtual_fs(&mut self, virtual_fs: VirtualFileSystemEntry) {
         let mut shared = self.shared.lock().unwrap();
@@ -149,34 +159,41 @@ impl AssetManager {
     }
 
     /// Processes the AssetManager events.
-    /// 
+    ///
     /// Returns a list of changed assets, and the type of change.
     pub fn process_events(&mut self) {
         let mut changed_paths = HashSet::new();
-        
+
         for event in self.internal_events_rx.try_iter() {
             match event {
-                InternalAssetEvent::Created(_asset_path) => {},
+                InternalAssetEvent::Created(_asset_path) => {}
                 InternalAssetEvent::Changed(asset_path) => {
                     // Collect the changed assets.
                     changed_paths.insert(asset_path);
-                },
+                }
                 InternalAssetEvent::Loaded(loaded_asset_event) => {
                     let mut shared = self.shared.lock().unwrap();
 
                     // Get the AssetId for this path
-                    if let Some(asset_id) = shared.database.get_id_by_path(&loaded_asset_event.path) {
+                    if let Some(asset_id) = shared.database.get_id_by_path(&loaded_asset_event.path)
+                    {
                         // Set the asset in the database.
                         match loaded_asset_event.result {
                             Ok(asset) => {
-                                shared.database.set_asset_loaded(asset_id, asset, loaded_asset_event.dependencies);
-                            },
+                                shared.database.set_asset_loaded(
+                                    asset_id,
+                                    asset,
+                                    loaded_asset_event.dependencies,
+                                );
+                            }
                             Err(_) => {
-                                shared.database.set_asset_failed(asset_id, "Failed to load asset".to_string());
-                            },
+                                shared
+                                    .database
+                                    .set_asset_failed(asset_id, "Failed to load asset".to_string());
+                            }
                         }
                     }
-                },
+                }
             }
         }
     }
