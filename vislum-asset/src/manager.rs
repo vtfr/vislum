@@ -1,4 +1,4 @@
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::{collections::HashSet, path::Path, sync::{Arc, Mutex}};
 
 use crossbeam::channel::{Receiver, Sender};
 use thiserror::Error;
@@ -11,11 +11,7 @@ struct ProjectContext {
     fs: Arc<dyn Fs>,
 }
 
-/// A system for loading and managing assets.
-pub struct AssetManager {
-    internal_events_rx: Receiver<InternalAssetEvent>,
-    internal_events_tx: Sender<InternalAssetEvent>,
-
+struct AssetManagerShared {
     /// The context for the current project.
     project_context: Option<ProjectContext>,
 
@@ -31,6 +27,15 @@ pub struct AssetManager {
     /// The assets that are currently being loaded.
     loading: HashSet<AssetPath>,
 }
+
+/// The asset manager.
+pub struct AssetManager {
+    internal_events_rx: Receiver<InternalAssetEvent>,
+    internal_events_tx: Sender<InternalAssetEvent>,
+    shared: Arc<Mutex<AssetManagerShared>>,
+}
+
+static_assertions::assert_impl_all!(AssetManager: Send, Sync);
 
 #[derive(Error, Debug)]
 pub enum GetError {
@@ -54,11 +59,13 @@ impl AssetManager {
         Self {
             internal_events_rx,
             internal_events_tx,
-            project_context: None,
-            vislum_fs,
-            loaders: Arc::new(loaders),
-            database: Default::default(),
-            loading: Default::default(),
+            shared: Arc::new(Mutex::new(AssetManagerShared {
+                project_context: None,
+                vislum_fs,
+                loaders: Arc::new(loaders),
+                database: Default::default(),
+                loading: Default::default(),
+            })),
         }
     }
 
@@ -71,7 +78,8 @@ impl AssetManager {
     }
 
     pub fn get_untyped(&self, path: &AssetPath) -> Result<Arc<dyn Asset>, GetError> {
-        let asset_entry = self.database.get_entry(path)
+        let shared = self.shared.lock().unwrap();
+        let asset_entry = shared.database.get_entry(path)
             .ok_or(GetError::NotFound)?;
 
         match asset_entry.state() {
@@ -87,18 +95,19 @@ impl AssetManager {
     /// callers can retrieve it by calling [`AssetManager::get`].
     pub fn load(&mut self, path: AssetPath) {
         // If the asset is already being loaded, return.
-        if self.loading.contains(&path) {
+        let mut shared = self.shared.lock().unwrap();
+        if shared.loading.contains(&path) {
             return;
         }
 
         // Add the asset to the loading set.
-        self.loading.insert(path.clone());
+        shared.loading.insert(path.clone());
 
         let mut load_context = LoadContext {
             path: path.clone(),
-            vislum_fs: self.vislum_fs.clone(),
-            loaders: self.loaders.clone(),
-            project_fs: self.project_context.as_ref().map(|ctx| ctx.fs.clone()),
+            vislum_fs: shared.vislum_fs.clone(),
+            loaders: shared.loaders.clone(),
+            project_fs: shared.project_context.as_ref().map(|ctx| ctx.fs.clone()),
             dependencies: Default::default(),
         };
         
@@ -132,7 +141,8 @@ impl AssetManager {
 
     /// Closes the current project.
     pub fn close_project(&mut self) {
-        self.project_context.take();
+        let mut shared = self.shared.lock().unwrap();
+        shared.project_context.take();
     }
 
     pub fn process_events(&mut self) {
@@ -147,15 +157,16 @@ impl AssetManager {
                 },
                 InternalAssetEvent::Loaded(loaded_asset_event) => {
                     // Remove the asset from the loading set.
-                    self.loading.remove(&loaded_asset_event.path);
+                    let mut shared = self.shared.lock().unwrap();
+                    shared.loading.remove(&loaded_asset_event.path);
 
                     // Set the asset in the database.
                     match loaded_asset_event.result {
                         Ok(asset) => {
-                            self.database.set_asset_loaded(loaded_asset_event.path, asset, loaded_asset_event.dependencies);
+                            shared.database.set_asset_loaded(loaded_asset_event.path, asset, loaded_asset_event.dependencies);
                         },
                         Err(_) => {
-                            self.database.set_asset_failed(loaded_asset_event.path, "Failed to load asset".to_string());
+                            shared.database.set_asset_failed(loaded_asset_event.path, "Failed to load asset".to_string());
                         },
                     }
                 },

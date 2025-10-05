@@ -3250,6 +3250,7 @@ dependencies = [
  "crossbeam",
  "derive_more",
  "downcast-rs 2.0.2",
+ "log",
  "notify-debouncer-full",
  "serde",
  "static_assertions",

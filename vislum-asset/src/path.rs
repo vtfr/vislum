@@ -51,8 +51,6 @@ impl<'de> Deserialize<'de> for AssetPath {
     }
 }
 
-
-
 static_assertions::assert_impl_all!(AssetPath: Send, Sync);
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Error)]

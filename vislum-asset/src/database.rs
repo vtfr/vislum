@@ -5,12 +5,12 @@ use crate::asset::Asset;
 use crate::path::AssetPath;
 
 #[derive(Default)]
-pub struct AssetEntry {
+pub struct AssetDatabaseEntry {
     state: AssetState,
     dependencies: HashSet<AssetPath>,
 }
 
-impl AssetEntry {
+impl AssetDatabaseEntry {
     /// Returns the state of the asset.
     pub fn state(&self) -> &AssetState {
         &self.state
@@ -32,12 +32,12 @@ pub enum AssetState {
 
 #[derive(Default)]
 pub struct AssetDatabase {
-    database: HashMap<AssetPath, AssetEntry>,
+    database: HashMap<AssetPath, AssetDatabaseEntry>,
 }
 
 impl AssetDatabase {
     /// Returns an entry for the given path.
-    pub fn get_entry(&self, path: &AssetPath) -> Option<&AssetEntry> {
+    pub fn get_entry(&self, path: &AssetPath) -> Option<&AssetDatabaseEntry> {
         self.database.get(path)
     }
 
