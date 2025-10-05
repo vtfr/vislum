@@ -3,12 +3,12 @@ use std::sync::Arc;
 use crate::{fs::Fs, path::AssetPath};
 
 /// A virtual filesystem.
-#[derive(Default)]
-pub struct VirtualFileSystem {
+#[derive(Default, Clone)]
+pub struct FileSystemRouter {
     entries: Vec<VirtualFileSystemEntry>,
 }
 
-impl VirtualFileSystem {
+impl FileSystemRouter {
     /// Adds a new virtual filesystem entry.
     /// 
     /// If an entry with the same root already exists, it will be replaced.
@@ -41,25 +41,43 @@ impl VirtualFileSystem {
             virtual_fs: entry.clone(),
         })
     }
+
+    /// Routes a path to the appropriate filesystem.
+    pub fn route(&self, path: &AssetPath) -> Option<&dyn Fs> {
+        let entry = self.entries.iter()
+            .find(|e| e.matches(path))?;
+        
+        Some(entry.fs())
+    }
 }
 
 /// A virtual filesystem entry.
+#[derive(Clone)]
 pub struct VirtualFileSystemEntry {
     /// The root prefix of the entry.
     /// 
     /// [`AssetPath`]s starting with this prefix will be resolved to this entry.
-    root: AssetPath,
+    pub root: AssetPath,
 
     /// Whether to strip the root prefix from the resolved path.
-    strip_prefix: bool,
+    pub strip_prefix: bool,
 
     /// The filesystem implementation for the entry.
-    fs: Arc<dyn Fs>,
+    pub fs: Arc<dyn Fs>,
 }
 
 static_assertions::assert_impl_all!(VirtualFileSystemEntry: Send, Sync);
 
 impl VirtualFileSystemEntry {
+    /// Creates a new virtual filesystem entry.
+    pub fn new(root: AssetPath, strip_prefix: bool, fs: Arc<dyn Fs>) -> Self {
+        Self {
+            root,
+            strip_prefix,
+            fs,
+        }
+    }
+
     /// Returns whether the entry matches the given path.
     pub fn matches(&self, path: &AssetPath) -> bool {
         path.path().starts_with(self.root.path())
@@ -77,9 +95,9 @@ impl VirtualFileSystemEntry {
 }
 
 /// A resolved virtual asset path.
-pub struct ResolvedVirtualAssetPath<'a> {
-    /// The path to the asset in the provided filesysetm.
-    path: AssetPath,
+pub struct ResolvedVirtualAssetPath {
+    /// The path to the asset in the provided filesystem.
+    pub path: AssetPath,
 
-    virtual_fs: &'a VirtualFileSystemEntry,
+    pub virtual_fs: VirtualFileSystemEntry,
 }

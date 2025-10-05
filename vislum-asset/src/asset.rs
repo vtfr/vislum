@@ -2,14 +2,31 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use downcast_rs::{DowncastSync};
+use slotmap::DefaultKey;
 
 use crate::loader::LoadError;
 use crate::path::AssetPath;
 
+/// A unique identifier for an asset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AssetId(DefaultKey);
+
+impl AssetId {
+    /// Creates a new AssetId from a slotmap key.
+    pub fn new(key: DefaultKey) -> Self {
+        Self(key)
+    }
+
+    /// Returns the underlying slotmap key.
+    pub fn key(self) -> DefaultKey {
+        self.0
+    }
+}
+
 pub trait Asset: Send + Sync + DowncastSync { }
 
 downcast_rs::impl_downcast!(sync Asset);
-pub(crate) enum InternalAssetEvent {
+pub enum InternalAssetEvent {
     /// An asset has been created.
     Created(AssetPath),
     /// An asset has been changed.

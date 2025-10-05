@@ -1,10 +1,14 @@
-use std::{collections::HashSet, path::Path, sync::{Arc, Mutex}};
+use std::{collections::HashSet, sync::{Arc, Mutex}};
 
 use crossbeam::channel::{Receiver, Sender};
 use thiserror::Error;
 
 use crate::{
-    asset::{Asset, InternalAssetEvent, LoadAssetCompletionEvent}, database::{AssetDatabase, AssetState}, fs::{Fs, memory::MemoryFs}, loader::{AssetLoaders, ErasedAssetLoader, LoadContext}, path::{AssetPath, VirtualFileSystem}, virfs::{VirtualFileSystem, VirtualFileSystemEntry}
+    asset::{Asset, AssetId, InternalAssetEvent, LoadAssetCompletionEvent}, 
+    database::{AssetDatabase, AssetState}, 
+    loader::{AssetLoaders, LoadContext}, 
+    path::AssetPath, 
+    vfs::{FileSystemRouter, VirtualFileSystemEntry}
 };
 
 /// The shared, mutable state of the asset manager.
@@ -14,7 +18,7 @@ pub struct AssetManagerShared {
     database: AssetDatabase,
 
     /// The virtual filesystem for the assets.
-    virtual_fs: VirtualFileSystem,
+    virtual_fs: FileSystemRouter,
 }
 
 impl AssetManagerShared {
@@ -24,7 +28,10 @@ impl AssetManagerShared {
         
         // Untrack removed resources.
         if let Some(replaced) = replaced {
-            self.database.set_asset_failed(replaced.root().clone(), "Virtual filesystem entry replaced".to_string());
+            // Find and remove assets that were using the replaced filesystem
+            // This is a simplified approach - in practice, you might want to track which assets use which filesystem
+            // For now, we'll just log that a filesystem was replaced
+            log::warn!("Virtual filesystem entry replaced: {}", replaced.root());
         }
     }
 }
@@ -39,7 +46,7 @@ pub struct AssetManager {
     internal_events_tx: Sender<InternalAssetEvent>,
     
     /// The loaders for the assets.
-    loaders: Arc<[Box<dyn ErasedAssetLoader>]>,
+    loaders: Arc<AssetLoaders>,
     
     /// The shared, mutable state of the asset manager.
     shared: Arc<Mutex<AssetManagerShared>>,
@@ -60,7 +67,7 @@ pub enum AssetError {
 }
 
 impl AssetManager {
-    pub fn new_with_loaders(loaders: Arc<[Box<dyn ErasedAssetLoader>]>) -> Self {
+    pub fn new_with_loaders(loaders: Arc<AssetLoaders>) -> Self {
         let (internal_events_tx, internal_events_rx) =
             crossbeam::channel::unbounded::<InternalAssetEvent>();
 
@@ -68,24 +75,21 @@ impl AssetManager {
             internal_events_rx,
             internal_events_tx,
             loaders,
-            shared: Arc::new(Mutex::new(AssetManagerShared {
-                database: Default::default(),
-                virtual_fs: Default::default(),
-            })),
+            shared: Arc::new(Mutex::new(AssetManagerShared::default())),
         }
     }
 
-    pub fn get<T: Asset>(&self, path: &AssetPath) -> Result<Arc<T>, AssetError> {
-        let asset = self.get_untyped(path)?;
+    pub fn get<T: Asset>(&self, id: AssetId) -> Result<Arc<T>, AssetError> {
+        let asset = self.get_untyped(id)?;
         match asset.clone().downcast_arc::<T>() {
             Ok(asset) => Ok(asset),
             Err(_) => Err(AssetError::IncompatibleType),
         }
     }
 
-    pub fn get_untyped(&self, path: &AssetPath) -> Result<Arc<dyn Asset>, AssetError> {
+    pub fn get_untyped(&self, id: AssetId) -> Result<Arc<dyn Asset>, AssetError> {
         let shared = self.shared.lock().unwrap();
-        let asset_entry = shared.database.get_entry(path)
+        let asset_entry = shared.database.get_entry_by_id(id)
             .ok_or(AssetError::NotFound)?;
 
         match asset_entry.state() {
@@ -99,21 +103,30 @@ impl AssetManager {
     /// 
     /// Asset loading is done in the background. Once an asset is loaded, 
     /// callers can retrieve it by calling [`AssetManager::get`].
-    pub fn load(&mut self, path: AssetPath) {
-        // If the asset is already being loaded, return.
+    /// Returns the AssetId for the asset being loaded.
+    pub fn load(&mut self, path: AssetPath) -> AssetId {
         let mut shared = self.shared.lock().unwrap();
-        // if shared.loading.contains(&path) {
-        //     return;
-        // }
+        
+        // Check if the asset is already being loaded or loaded
+        if let Some(entry) = shared.database.get_entry_by_path(&path) {
+            match entry.state() {
+                AssetState::Loading | AssetState::Loaded(_) => {
+                    // Return existing ID
+                    return shared.database.get_id_by_path(&path).unwrap();
+                },
+                AssetState::Failed(_) => {
+                    // Retry loading if it previously failed
+                }
+            }
+        }
 
-        // Add the asset to the loading set.
-        // shared.loading.insert(path.clone());
+        // Register the asset and get its ID
+        let asset_id = shared.database.register_asset(path.clone());
 
         let mut load_context = LoadContext {
             path: path.clone(),
-            vislum_fs: shared.vislum_fs.clone(),
-            loaders: shared.loaders.clone(),
-            project_fs: shared.project_context.as_ref().map(|ctx| ctx.fs.clone()),
+            virtual_fs: shared.virtual_fs.clone(),
+            loaders: self.loaders.clone(),
             dependencies: Default::default(),
         };
         
@@ -129,6 +142,14 @@ impl AssetManager {
                 dependencies: load_context.dependencies,
             }));
         });
+
+        asset_id
+    }
+
+    /// Adds a virtual filesystem entry to the asset manager.
+    pub fn add_virtual_fs(&mut self, virtual_fs: VirtualFileSystemEntry) {
+        let mut shared = self.shared.lock().unwrap();
+        shared.add_virtual_fs(virtual_fs);
     }
 
     /// Processes the AssetManager events.
@@ -145,17 +166,19 @@ impl AssetManager {
                     changed_paths.insert(asset_path);
                 },
                 InternalAssetEvent::Loaded(loaded_asset_event) => {
-                    // Remove the asset from the loading set.
                     let mut shared = self.shared.lock().unwrap();
 
-                    // Set the asset in the database.
-                    match loaded_asset_event.result {
-                        Ok(asset) => {
-                            shared.database.set_asset_loaded(loaded_asset_event.path, asset, loaded_asset_event.dependencies);
-                        },
-                        Err(_) => {
-                            shared.database.set_asset_failed(loaded_asset_event.path, "Failed to load asset".to_string());
-                        },
+                    // Get the AssetId for this path
+                    if let Some(asset_id) = shared.database.get_id_by_path(&loaded_asset_event.path) {
+                        // Set the asset in the database.
+                        match loaded_asset_event.result {
+                            Ok(asset) => {
+                                shared.database.set_asset_loaded(asset_id, asset, loaded_asset_event.dependencies);
+                            },
+                            Err(_) => {
+                                shared.database.set_asset_failed(asset_id, "Failed to load asset".to_string());
+                            },
+                        }
                     }
                 },
             }

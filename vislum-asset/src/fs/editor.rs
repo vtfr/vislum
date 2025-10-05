@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::time::Duration;
 
 use crossbeam::channel::Sender;
@@ -8,21 +7,21 @@ use notify_debouncer_full::{
 };
 
 use crate::{
-    asset::InternalAssetEvent, fs::{Bytes, Fs, ReadError}, path::{AssetPath, VirtualFileSystem}
+    asset::InternalAssetEvent, fs::{Bytes, Fs, ReadError}, path::AssetPath
 };
 
 /// A filesystem implementation for the editor.
 pub struct EditorFs {
-    resolver: VirtualFileSystem,
+    root_path: std::path::PathBuf,
     watcher: Watcher,
 }
 
 impl EditorFs {
-    pub fn new(resolver: VirtualFileSystem, event_tx: Sender<InternalAssetEvent>) -> Self {
-        let watcher = Watcher::new(resolver.clone(), event_tx);
+    pub fn new(root_path: std::path::PathBuf, event_tx: Sender<InternalAssetEvent>) -> Self {
+        let watcher = Watcher::new(root_path.clone(), event_tx);
 
         Self {
-            resolver,
+            root_path,
             watcher,
         }
     }
@@ -30,9 +29,10 @@ impl EditorFs {
 
 impl Fs for EditorFs {
     fn read(&self, path: &AssetPath) -> Result<Bytes, ReadError> {
-        let path = self.resolver.resolve(&path);
-
-        match std::fs::read(path) {
+        // Convert AssetPath to filesystem path
+        let fs_path = self.root_path.join(path.path());
+        
+        match std::fs::read(&fs_path) {
             Ok(data) => Ok(Bytes::new_owned(data)),
             Err(_) => Err(ReadError::NotFound),
         }
@@ -47,11 +47,11 @@ pub(crate) struct Watcher {
 
 impl Watcher {
     pub fn new(
-        project_asset_resolver: VirtualFileSystem,
+        root_path: std::path::PathBuf,
         event_tx: Sender<InternalAssetEvent>,
     ) -> Self {
         let mut debouncer = {
-            let asset_path_resolver = project_asset_resolver.clone();
+            let root_path = root_path.clone();
 
             notify_debouncer_full::new_debouncer(
                 Duration::from_secs(1),
@@ -63,7 +63,7 @@ impl Watcher {
                     #[inline(always)]
                     fn process_event(
                         event: DebouncedEvent,
-                        asset_path_resolver: &VirtualFileSystem,
+                        root_path: &std::path::PathBuf,
                         event_tx: &Sender<InternalAssetEvent>,
                     ) {
                         // Filter only modify events.
@@ -76,23 +76,17 @@ impl Watcher {
                             return;
                         };
 
-                        // Unresolve the path.
-                        let path = match asset_path_resolver.unresolve(path) {
-                            Ok(path) => path,
-                            Err(error) => {
-                                dbg!(&error);
-                                return;
-                            }
-                        };
-
-                        // Send the event.
-                        let _ = event_tx.send(InternalAssetEvent::Changed(path));
+                        // Convert filesystem path to AssetPath
+                        if let Ok(relative_path) = path.strip_prefix(root_path) {
+                            let asset_path = AssetPath::new_owned(relative_path);
+                            let _ = event_tx.send(InternalAssetEvent::Changed(asset_path));
+                        }
                     }
 
                     match event {
                         Ok(events) => {
                             for event in events {
-                                process_event(event, &asset_path_resolver, &event_tx);
+                                process_event(event, &root_path, &event_tx);
                             }
                         }
                         Err(errors) => {
@@ -105,7 +99,7 @@ impl Watcher {
         };
 
         debouncer
-            .watch(project_asset_resolver.root(), RecursiveMode::Recursive)
+            .watch(&root_path, RecursiveMode::Recursive)
             .unwrap();
 
         Self { debouncer }
