@@ -8,3 +8,4 @@ vislum-shader = { path = "../vislum-shader" }
 vislum-render = { path = "../vislum-render" }
 winit = { workspace = true }
 env_logger = { workspace = true }
+log = { workspace = true }

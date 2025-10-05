@@ -3381,6 +3381,7 @@ name = "vislum-test"
 version = "0.1.0"
 dependencies = [
  "env_logger",
+ "log",
  "vislum-render",
  "vislum-shader",
  "winit",
