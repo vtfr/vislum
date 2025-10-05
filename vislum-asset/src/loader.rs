@@ -6,7 +6,7 @@ use thiserror::Error;
 use crate::asset::Asset;
 use crate::fs::memory::MemoryFs;
 use crate::fs::{Bytes, Fs, ReadError};
-use crate::path::{AssetNamespace, AssetPath};
+use crate::path::AssetPath;
 
 /// The context for loading assets.
 pub struct LoadContext {
@@ -14,7 +14,7 @@ pub struct LoadContext {
     pub path: AssetPath,
 
     /// The filesystem for the vislum assets.
-    pub vislum_fs: Arc<MemoryFs>,
+    pub vislum_fs: VirtualFileSystem,
 
     /// All the available asset loaders.
     pub loaders: Arc<AssetLoaders>,
@@ -42,13 +42,7 @@ impl LoadContext {
 
     /// Reads an asset from the filesystem.
     pub fn read(&mut self, path: &AssetPath) -> Result<Bytes, LoadError> {
-        let bytes = match path.namespace() {
-            AssetNamespace::Vislum => self.vislum_fs.read(path)?,
-            AssetNamespace::Project => match self.project_fs.as_ref() {
-                Some(project_fs) => project_fs.read(path)?,
-                None => return Err(LoadError::ProjectNotLoaded),
-            },
-        };
+        let bytes = self.vislum_fs.read(path)?;
 
         // If the path is not the same as the path of the asset to load,
         // then track it as a dependency.

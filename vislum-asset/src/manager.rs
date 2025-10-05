@@ -4,41 +4,51 @@ use crossbeam::channel::{Receiver, Sender};
 use thiserror::Error;
 
 use crate::{
-    asset::{Asset, InternalAssetEvent, LoadedAssetEvent}, database::{AssetDatabase, AssetState}, fs::{Fs, memory::MemoryFs}, loader::{AssetLoaders, LoadContext}, path::{AssetPath, ProjectAssetResolver}
+    asset::{Asset, InternalAssetEvent, LoadAssetCompletionEvent}, database::{AssetDatabase, AssetState}, fs::{Fs, memory::MemoryFs}, loader::{AssetLoaders, ErasedAssetLoader, LoadContext}, path::{AssetPath, VirtualFileSystem}, virfs::{VirtualFileSystem, VirtualFileSystemEntry}
 };
 
-struct ProjectContext {
-    fs: Arc<dyn Fs>,
-}
-
-struct AssetManagerShared {
-    /// The context for the current project.
-    project_context: Option<ProjectContext>,
-
-    /// The filesystem for the vislum assets.
-    vislum_fs: Arc<MemoryFs>,
-
-    /// The loaders for the assets.
-    loaders: Arc<AssetLoaders>,
-
+/// The shared, mutable state of the asset manager.
+#[derive(Default)]
+pub struct AssetManagerShared {
     /// The database for the assets.
     database: AssetDatabase,
 
-    /// The assets that are currently being loaded.
-    loading: HashSet<AssetPath>,
+    /// The virtual filesystem for the assets.
+    virtual_fs: VirtualFileSystem,
+}
+
+impl AssetManagerShared {
+    /// Adds a virtual filesystem entry to the asset manager.
+    pub fn add_virtual_fs(&mut self, virtual_fs: VirtualFileSystemEntry) {
+        let replaced =self.virtual_fs.add(virtual_fs);
+        
+        // Untrack removed resources.
+        if let Some(replaced) = replaced {
+            self.database.set_asset_failed(replaced.root().clone(), "Virtual filesystem entry replaced".to_string());
+        }
+    }
 }
 
 /// The asset manager.
+#[derive(Clone)]
 pub struct AssetManager {
+    /// The receiver for the internal events.
     internal_events_rx: Receiver<InternalAssetEvent>,
+    
+    /// The sender for the internal events.
     internal_events_tx: Sender<InternalAssetEvent>,
+    
+    /// The loaders for the assets.
+    loaders: Arc<[Box<dyn ErasedAssetLoader>]>,
+    
+    /// The shared, mutable state of the asset manager.
     shared: Arc<Mutex<AssetManagerShared>>,
 }
 
 static_assertions::assert_impl_all!(AssetManager: Send, Sync);
 
 #[derive(Error, Debug)]
-pub enum GetError {
+pub enum AssetError {
     #[error("The asset is not loaded. Retry in a couple frames.")]
     Loading,
     #[error("The asset is not found.")]
@@ -50,42 +60,38 @@ pub enum GetError {
 }
 
 impl AssetManager {
-    pub fn new_with_loaders(loaders: AssetLoaders) -> Self {
+    pub fn new_with_loaders(loaders: Arc<[Box<dyn ErasedAssetLoader>]>) -> Self {
         let (internal_events_tx, internal_events_rx) =
             crossbeam::channel::unbounded::<InternalAssetEvent>();
-
-        let vislum_fs = Arc::new(MemoryFs::new());
 
         Self {
             internal_events_rx,
             internal_events_tx,
+            loaders,
             shared: Arc::new(Mutex::new(AssetManagerShared {
-                project_context: None,
-                vislum_fs,
-                loaders: Arc::new(loaders),
                 database: Default::default(),
-                loading: Default::default(),
+                virtual_fs: Default::default(),
             })),
         }
     }
 
-    pub fn get<T: Asset>(&self, path: &AssetPath) -> Result<Arc<T>, GetError> {
+    pub fn get<T: Asset>(&self, path: &AssetPath) -> Result<Arc<T>, AssetError> {
         let asset = self.get_untyped(path)?;
         match asset.clone().downcast_arc::<T>() {
             Ok(asset) => Ok(asset),
-            Err(_) => Err(GetError::IncompatibleType),
+            Err(_) => Err(AssetError::IncompatibleType),
         }
     }
 
-    pub fn get_untyped(&self, path: &AssetPath) -> Result<Arc<dyn Asset>, GetError> {
+    pub fn get_untyped(&self, path: &AssetPath) -> Result<Arc<dyn Asset>, AssetError> {
         let shared = self.shared.lock().unwrap();
         let asset_entry = shared.database.get_entry(path)
-            .ok_or(GetError::NotFound)?;
+            .ok_or(AssetError::NotFound)?;
 
         match asset_entry.state() {
             AssetState::Loaded(asset) => Ok(asset.clone()),
-            AssetState::Loading => Err(GetError::Loading),
-            AssetState::Failed(_) => Err(GetError::Failed),
+            AssetState::Loading => Err(AssetError::Loading),
+            AssetState::Failed(_) => Err(AssetError::Failed),
         }
     }
 
@@ -96,12 +102,12 @@ impl AssetManager {
     pub fn load(&mut self, path: AssetPath) {
         // If the asset is already being loaded, return.
         let mut shared = self.shared.lock().unwrap();
-        if shared.loading.contains(&path) {
-            return;
-        }
+        // if shared.loading.contains(&path) {
+        //     return;
+        // }
 
         // Add the asset to the loading set.
-        shared.loading.insert(path.clone());
+        // shared.loading.insert(path.clone());
 
         let mut load_context = LoadContext {
             path: path.clone(),
@@ -117,7 +123,7 @@ impl AssetManager {
         std::thread::spawn(move || {
             let result = load_context.load(&path);
 
-            let _ = internal_events_tx.send(InternalAssetEvent::Loaded(LoadedAssetEvent {
+            let _ = internal_events_tx.send(InternalAssetEvent::Loaded(LoadAssetCompletionEvent {
                 path,
                 result,
                 dependencies: load_context.dependencies,
@@ -125,26 +131,9 @@ impl AssetManager {
         });
     }
 
-    /// Opens a project.
-    pub fn open_project(&mut self, project_path: &Path) {
-        todo!()
-        // // Close the current project, if open.
-        // self.close_project();
-
-        // let asset_path_resolver = ProjectAssetResolver::new(project_path);
-        // let fs = Arc::new(EditorFs::new(asset_path_resolver.clone()));
-
-        // let project_context = ProjectContext { fs };
-
-        // self.project_context = Some(project_context);
-    }
-
-    /// Closes the current project.
-    pub fn close_project(&mut self) {
-        let mut shared = self.shared.lock().unwrap();
-        shared.project_context.take();
-    }
-
+    /// Processes the AssetManager events.
+    /// 
+    /// Returns a list of changed assets, and the type of change.
     pub fn process_events(&mut self) {
         let mut changed_paths = HashSet::new();
         
@@ -158,7 +147,6 @@ impl AssetManager {
                 InternalAssetEvent::Loaded(loaded_asset_event) => {
                     // Remove the asset from the loading set.
                     let mut shared = self.shared.lock().unwrap();
-                    shared.loading.remove(&loaded_asset_event.path);
 
                     // Set the asset in the database.
                     match loaded_asset_event.result {

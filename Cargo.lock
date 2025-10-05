@@ -3253,6 +3253,7 @@ dependencies = [
  "log",
  "notify-debouncer-full",
  "serde",
+ "slotmap",
  "static_assertions",
  "thiserror 2.0.16",
 ]

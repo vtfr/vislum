@@ -4,3 +4,4 @@ pub mod loader;
 pub mod path;
 pub mod manager;
 pub mod database;
+pub mod virfs;

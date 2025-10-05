@@ -13,3 +13,4 @@ atomicow = { workspace = true }
 static_assertions = { workspace = true }
 downcast-rs = { workspace = true }
 log = { workspace = true }
+slotmap = { workspace = true }

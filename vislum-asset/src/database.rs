@@ -6,7 +6,10 @@ use crate::path::AssetPath;
 
 #[derive(Default)]
 pub struct AssetDatabaseEntry {
+    /// The state of the asset.
     state: AssetState,
+
+    /// The dependencies of the asset.
     dependencies: HashSet<AssetPath>,
 }
 

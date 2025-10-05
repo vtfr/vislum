@@ -8,17 +8,17 @@ use notify_debouncer_full::{
 };
 
 use crate::{
-    asset::InternalAssetEvent, fs::{Bytes, Fs, ReadError}, path::{AssetPath, ProjectAssetResolver}
+    asset::InternalAssetEvent, fs::{Bytes, Fs, ReadError}, path::{AssetPath, VirtualFileSystem}
 };
 
 /// A filesystem implementation for the editor.
 pub struct EditorFs {
-    resolver: ProjectAssetResolver,
+    resolver: VirtualFileSystem,
     watcher: Watcher,
 }
 
 impl EditorFs {
-    pub fn new(resolver: ProjectAssetResolver, event_tx: Sender<InternalAssetEvent>) -> Self {
+    pub fn new(resolver: VirtualFileSystem, event_tx: Sender<InternalAssetEvent>) -> Self {
         let watcher = Watcher::new(resolver.clone(), event_tx);
 
         Self {
@@ -47,7 +47,7 @@ pub(crate) struct Watcher {
 
 impl Watcher {
     pub fn new(
-        project_asset_resolver: ProjectAssetResolver,
+        project_asset_resolver: VirtualFileSystem,
         event_tx: Sender<InternalAssetEvent>,
     ) -> Self {
         let mut debouncer = {
@@ -63,7 +63,7 @@ impl Watcher {
                     #[inline(always)]
                     fn process_event(
                         event: DebouncedEvent,
-                        asset_path_resolver: &ProjectAssetResolver,
+                        asset_path_resolver: &VirtualFileSystem,
                         event_tx: &Sender<InternalAssetEvent>,
                     ) {
                         // Filter only modify events.
