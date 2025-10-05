@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::{collections::HashMap, sync::Arc};
-use slotmap::{DefaultKey, SlotMap};
+use slotmap::SlotMap;
 
 use crate::asset::{Asset, AssetId};
 use crate::path::AssetPath;
@@ -41,44 +41,28 @@ pub enum AssetState {
     Failed(String),
 }
 
+#[derive(Default)]
 pub struct AssetDatabase {
     /// The slotmap storing all assets by their ID.
-    assets: SlotMap<DefaultKey, AssetDatabaseEntry>,
+    assets: SlotMap<AssetId, AssetDatabaseEntry>,
     
     /// Path to AssetId mapping for quick lookups.
     path_to_id: HashMap<AssetPath, AssetId>,
 }
 
 impl AssetDatabase {
-    /// Creates a new asset database.
-    pub fn new() -> Self {
-        Self {
-            assets: SlotMap::new(),
-            path_to_id: HashMap::new(),
-        }
-    }
-}
-
-impl Default for AssetDatabase {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AssetDatabase {
     /// Returns an entry for the given path.
-    pub fn get_entry_by_path(&self, path: &AssetPath) -> Option<&AssetDatabaseEntry> {
-        let id = self.path_to_id.get(path)?;
-        self.assets.get(id.key())
+    pub fn get_asset_id_by_path(&self, path: &AssetPath) -> Option<AssetId> {
+        self.path_to_id.get(path).copied()
     }
 
     /// Returns an entry for the given AssetId.
     pub fn get_entry_by_id(&self, id: AssetId) -> Option<&AssetDatabaseEntry> {
-        self.assets.get(id.key())
+        self.assets.get(id)
     }
 
     /// Registers a new asset and returns its AssetId.
-    pub fn register_asset(&mut self, path: AssetPath) -> AssetId {
+    pub fn add(&mut self, path: AssetPath) -> AssetId {
         // Check if asset already exists
         if let Some(&id) = self.path_to_id.get(&path) {
             return id;
@@ -92,18 +76,17 @@ impl AssetDatabase {
         };
 
         // Insert into slotmap and get ID
-        let key = self.assets.insert(entry);
-        let id = AssetId::new(key);
+        let id = self.assets.insert(entry);
         
         // Update path mapping
         self.path_to_id.insert(path, id);
-        
+
         id
     }
 
     /// Updates an asset to the loaded state.
     pub fn set_asset_loaded(&mut self, id: AssetId, asset: Arc<dyn Asset>, dependencies: HashSet<AssetPath>) {
-        if let Some(entry) = self.assets.get_mut(id.key()) {
+        if let Some(entry) = self.assets.get_mut(id) {
             entry.state = AssetState::Loaded(asset);
             entry.dependencies = dependencies;
         }
@@ -111,14 +94,14 @@ impl AssetDatabase {
 
     /// Updates an asset to the failed state.
     pub fn set_asset_failed(&mut self, id: AssetId, error: String) {
-        if let Some(entry) = self.assets.get_mut(id.key()) {
+        if let Some(entry) = self.assets.get_mut(id) {
             entry.state = AssetState::Failed(error);
         }
     }
 
     /// Removes an asset from the database.
     pub fn remove_asset(&mut self, id: AssetId) {
-        if let Some(entry) = self.assets.remove(id.key()) {
+        if let Some(entry) = self.assets.remove(id) {
             self.path_to_id.remove(entry.path());
         }
     }

@@ -46,7 +46,7 @@ pub struct AssetManager {
     internal_events_tx: Sender<InternalAssetEvent>,
     
     /// The loaders for the assets.
-    loaders: Arc<AssetLoaders>,
+    loaders: AssetLoaders,
     
     /// The shared, mutable state of the asset manager.
     shared: Arc<Mutex<AssetManagerShared>>,
@@ -67,7 +67,7 @@ pub enum AssetError {
 }
 
 impl AssetManager {
-    pub fn new_with_loaders(loaders: Arc<AssetLoaders>) -> Self {
+    pub fn new(loaders: AssetLoaders) -> Self {
         let (internal_events_tx, internal_events_rx) =
             crossbeam::channel::unbounded::<InternalAssetEvent>();
 
@@ -107,21 +107,14 @@ impl AssetManager {
     pub fn load(&mut self, path: AssetPath) -> AssetId {
         let mut shared = self.shared.lock().unwrap();
         
-        // Check if the asset is already being loaded or loaded
-        if let Some(entry) = shared.database.get_entry_by_path(&path) {
-            match entry.state() {
-                AssetState::Loading | AssetState::Loaded(_) => {
-                    // Return existing ID
-                    return shared.database.get_id_by_path(&path).unwrap();
-                },
-                AssetState::Failed(_) => {
-                    // Retry loading if it previously failed
-                }
-            }
+        // Check if the asset is already being loaded or loaded,
+        // if so, return the existing ID.
+        if let Some(id) = shared.database.get_asset_id_by_path(&path) {
+            return id;
         }
 
         // Register the asset and get its ID
-        let asset_id = shared.database.register_asset(path.clone());
+        let id = shared.database.add(path.clone());
 
         let mut load_context = LoadContext {
             path: path.clone(),
@@ -136,14 +129,17 @@ impl AssetManager {
         std::thread::spawn(move || {
             let result = load_context.load(&path);
 
+            // Report the completion of the asset loading.
             let _ = internal_events_tx.send(InternalAssetEvent::Loaded(LoadAssetCompletionEvent {
+                id,
                 path,
                 result,
                 dependencies: load_context.dependencies,
+                filesystem_path: None,
             }));
         });
 
-        asset_id
+        id
     }
 
     /// Adds a virtual filesystem entry to the asset manager.

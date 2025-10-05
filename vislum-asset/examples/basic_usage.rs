@@ -25,7 +25,7 @@ fn main() {
     // Add loaders here...
     
     // Create asset manager
-    let mut manager = AssetManager::new_with_loaders(Arc::new(loaders));
+    let mut manager = AssetManager::new(Arc::new(loaders));
     
     // Add the virtual filesystem entries to the manager
     manager.add_virtual_fs(VirtualFileSystemEntry::new(

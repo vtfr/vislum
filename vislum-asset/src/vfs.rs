@@ -1,53 +1,38 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::{fs::Fs, path::AssetPath};
 
 /// A virtual filesystem.
 #[derive(Default, Clone)]
 pub struct VirtualFileSystem {
-    entries: Vec<VirtualFileSystemEntry>,
+    entries: Arc<Mutex<Vec<VirtualFileSystemEntry>>>,
 }
+
+static_assertions::assert_impl_all!(VirtualFileSystem: Send, Sync);
 
 impl VirtualFileSystem {
     /// Adds a new virtual filesystem entry.
     /// 
     /// If an entry with the same root already exists, it will be replaced.
     pub fn add(&mut self, entry: VirtualFileSystemEntry) -> Option<VirtualFileSystemEntry> {
-        let old_entry = self.entries.iter_mut()
+        let mut entries = self.entries.lock().unwrap();
+        let old_entry = entries.iter_mut()
             .find(|e| e.root == entry.root);
 
         if let Some(old_entry) = old_entry {
             Some(std::mem::replace(old_entry, entry))
         } else {
-            self.entries.push(entry);
+            entries.push(entry);
             None
         }
     }
 
     /// Resolves a path to a virtual asset path.
     pub fn resolve(&self, path: &AssetPath) -> Option<ResolvedVirtualAssetPath> {
-        let entry = self.entries.iter()
-            .find(|e| e.matches(path))?;
+        let entries = self.entries.lock().unwrap();
 
-        // Computes the path relative to the entry root.
-        let path = if entry.strip_prefix {
-            path.strip_prefix(entry.root())?
-        } else {
-            path.to_owned()
-        };
-
-        Some(ResolvedVirtualAssetPath {
-            path,
-            virtual_fs: entry.clone(),
-        })
-    }
-
-    /// Routes a path to the appropriate filesystem.
-    pub fn route(&self, path: &AssetPath) -> Option<&dyn Fs> {
-        let entry = self.entries.iter()
-            .find(|e| e.matches(path))?;
-        
-        Some(entry.fs())
+        entries.iter()
+            .find_map(|e| e.resolve(path))
     }
 }
 
@@ -79,8 +64,23 @@ impl VirtualFileSystemEntry {
     }
 
     /// Returns whether the entry matches the given path.
-    pub fn matches(&self, path: &AssetPath) -> bool {
-        path.path().starts_with(self.root.path())
+    pub fn resolve(&self, path: &AssetPath) -> Option<ResolvedVirtualAssetPath> {
+        let stripped_path = path
+            .path()
+            .strip_prefix(self.root.path())
+            .ok()?;
+
+        // If the entry is configured to strip the prefix, use the stripped path.
+        let path = if self.strip_prefix {
+            AssetPath::new_owned(stripped_path)
+        } else {
+            path.clone()
+        };
+
+        Some(ResolvedVirtualAssetPath {
+            path,
+            fs: self.fs.clone(),
+        })
     }
 
     /// Returns the root prefix of the entry.
@@ -99,5 +99,6 @@ pub struct ResolvedVirtualAssetPath {
     /// The path to the asset in the provided filesystem.
     pub path: AssetPath,
 
-    pub virtual_fs: VirtualFileSystemEntry,
+    /// The filesystem to be used for this path.
+    pub fs: Arc<dyn Fs>,
 }

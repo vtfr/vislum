@@ -1,29 +1,17 @@
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use downcast_rs::{DowncastSync};
-use slotmap::DefaultKey;
+use downcast_rs::DowncastSync;
 
 use crate::loader::LoadError;
 use crate::path::AssetPath;
 
-/// A unique identifier for an asset.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AssetId(DefaultKey);
-
-impl AssetId {
-    /// Creates a new AssetId from a slotmap key.
-    pub fn new(key: DefaultKey) -> Self {
-        Self(key)
-    }
-
-    /// Returns the underlying slotmap key.
-    pub fn key(self) -> DefaultKey {
-        self.0
-    }
+slotmap::new_key_type! {
+    /// A unique identifier for an asset.
+    pub struct AssetId;
 }
-
-pub trait Asset: Send + Sync + DowncastSync { }
+pub trait Asset: Send + Sync + DowncastSync {}
 
 downcast_rs::impl_downcast!(sync Asset);
 pub enum InternalAssetEvent {
@@ -38,9 +26,15 @@ pub enum InternalAssetEvent {
 static_assertions::assert_impl_all!(InternalAssetEvent: Send, Sync);
 
 /// Internal event for when an asset has finished loading.
-pub(crate) struct LoadAssetCompletionEvent {
+pub struct LoadAssetCompletionEvent {
+    /// The ID of the asset that was loaded.
+    pub id: AssetId,
+
     /// The path of the asset that was requested to be loaded.
     pub path: AssetPath,
+
+    /// The resolved filesystem path of the asset that was loaded.
+    pub filesystem_path: Option<PathBuf>,
 
     /// The result of the loading operation.
     pub result: Result<Arc<dyn Asset>, LoadError>,

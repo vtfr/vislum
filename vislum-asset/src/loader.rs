@@ -6,37 +6,48 @@ use thiserror::Error;
 use crate::asset::Asset;
 use crate::fs::{Bytes, ReadError};
 use crate::path::AssetPath;
-use crate::vfs::{FileSystemRouter, VirtualFileSystem};
+use crate::vfs::VirtualFileSystem;
 
 /// A collection of asset loaders.
-pub struct AssetLoaders {
-    pub loaders: Vec<Box<dyn ErasedAssetLoader>>,
+#[derive(Default)]
+pub struct AssetLoadersBuilder {
+    pub loaders: Vec<Arc<dyn ErasedAssetLoader>>,
 }
 
-impl AssetLoaders {
-    /// Creates a new collection of asset loaders.
-    pub fn new() -> Self {
-        Self {
-            loaders: Vec::new(),
-        }
-    }
-
+impl AssetLoadersBuilder {
     /// Adds a loader to the collection.
     pub fn add<L>(&mut self, loader: L)
     where
         L: ErasedAssetLoader + 'static,
     {
-        self.loaders.push(Box::new(loader));
+        self.loaders.push(Arc::new(loader));
     }
 
+    /// Builds the collection of loaders.
+    pub fn build(self) -> AssetLoaders {
+        AssetLoaders {
+            loaders: Arc::from_iter(self.loaders),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct AssetLoaders {
+    /// The loaders for the assets.
+    pub loaders: Arc<[Arc<dyn ErasedAssetLoader>]>,
+}
+
+impl AssetLoaders {
     /// Finds a loader by extension.
-    pub fn find_by_extension(&self, extension: &str) -> Option<&dyn ErasedAssetLoader> {
+    pub fn find_by_extension(&self, extension: &str) -> Option<Arc<dyn ErasedAssetLoader>> {
         self.loaders
             .iter()
             .find(|loader| loader.extensions().contains(&extension))
-            .map(|loader| &**loader)
+            .cloned()
     }
 }
+
+static_assertions::assert_impl_all!(AssetLoaders: Send, Sync);
 
 /// The context for loading assets.
 pub struct LoadContext {
@@ -47,7 +58,7 @@ pub struct LoadContext {
     pub virtual_fs: VirtualFileSystem,
 
     /// All the available asset loaders.
-    pub loaders: Arc<AssetLoaders>,
+    pub loaders: AssetLoaders,
 
     /// All collected dependencies.
     pub dependencies: HashSet<AssetPath>,
@@ -62,40 +73,21 @@ impl LoadContext {
             .to_str()
             .unwrap();
 
-        // Find the loader index by extension
-        let loader_index = self.loaders
-            .loaders
-            .iter()
-            .position(|loader| loader.extensions().contains(&ext))
-            .ok_or(LoadError::NoLoaderFound)?;
-
         // Get the loader reference
-        let loader = &*self.loaders.loaders[loader_index];
+        let loader = self.loaders.find_by_extension(ext)
+            .ok_or(LoadError::NoLoaderFound)?;
         
-        // Create a temporary context to avoid borrowing conflicts
-        let mut temp_context = LoadContext {
-            path: self.path.clone(),
-            virtual_fs: self.virtual_fs.clone(),
-            loaders: Arc::new(AssetLoaders {
-                loaders: vec![], // Empty for temp context
-            }),
-            dependencies: HashSet::new(),
-        };
-
-        let result = loader.load(&mut temp_context)?;
-        
-        // Merge dependencies back
-        self.dependencies.extend(temp_context.dependencies);
+        let result = loader.load(self)?;
         
         Ok(result)
     }
 
     /// Reads an asset from the filesystem.
     pub fn read(&mut self, path: &AssetPath) -> Result<Bytes, LoadError> {
-        let fs = self.virtual_fs.route(path)
+        let resolved_path = self.virtual_fs.resolve(path)
             .ok_or(LoadError::ReadError(ReadError::NotFound))?;
-        
-        let bytes = fs.read(path)?;
+
+        let bytes = resolved_path.fs.read(&resolved_path.path)?;
 
         // If the path is not the same as the path of the asset to load,
         // then track it as a dependency.
@@ -148,15 +140,5 @@ where
             Ok(asset) => Ok(Arc::new(asset)),
             Err(e) => Err(e),
         }
-    }
-}
-
-impl AssetLoaders {
-    /// Resolves a loader for the given extension.
-    pub fn resolve(&self, extension: &str) -> Option<&dyn ErasedAssetLoader> {
-        self.loaders
-            .iter()
-            .find(|loader| loader.extensions().contains(&extension))
-            .map(|loader| &**loader)
     }
 }
