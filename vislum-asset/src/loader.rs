@@ -6,7 +6,7 @@ use thiserror::Error;
 use crate::asset::Asset;
 use crate::fs::{Bytes, ReadError};
 use crate::path::AssetPath;
-use crate::vfs::FileSystemRouter;
+use crate::vfs::{FileSystemRouter, VirtualFileSystem};
 
 /// A collection of asset loaders.
 pub struct AssetLoaders {
@@ -29,11 +29,6 @@ impl AssetLoaders {
         self.loaders.push(Box::new(loader));
     }
 
-    /// Converts to a slice of loaders.
-    pub fn as_slice(&self) -> &[Box<dyn ErasedAssetLoader>] {
-        &self.loaders
-    }
-
     /// Finds a loader by extension.
     pub fn find_by_extension(&self, extension: &str) -> Option<&dyn ErasedAssetLoader> {
         self.loaders
@@ -49,7 +44,7 @@ pub struct LoadContext {
     pub path: AssetPath,
 
     /// The virtual filesystem for assets.
-    pub virtual_fs: FileSystemRouter,
+    pub virtual_fs: VirtualFileSystem,
 
     /// All the available asset loaders.
     pub loaders: Arc<AssetLoaders>,

@@ -4,11 +4,11 @@ use crate::{fs::Fs, path::AssetPath};
 
 /// A virtual filesystem.
 #[derive(Default, Clone)]
-pub struct FileSystemRouter {
+pub struct VirtualFileSystem {
     entries: Vec<VirtualFileSystemEntry>,
 }
 
-impl FileSystemRouter {
+impl VirtualFileSystem {
     /// Adds a new virtual filesystem entry.
     /// 
     /// If an entry with the same root already exists, it will be replaced.

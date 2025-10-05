@@ -8,7 +8,7 @@ use crate::{
     database::{AssetDatabase, AssetState}, 
     loader::{AssetLoaders, LoadContext}, 
     path::AssetPath, 
-    vfs::{FileSystemRouter, VirtualFileSystemEntry}
+    vfs::{VirtualFileSystem, VirtualFileSystemEntry}
 };
 
 /// The shared, mutable state of the asset manager.
@@ -18,7 +18,7 @@ pub struct AssetManagerShared {
     database: AssetDatabase,
 
     /// The virtual filesystem for the assets.
-    virtual_fs: FileSystemRouter,
+    virtual_fs: VirtualFileSystem,
 }
 
 impl AssetManagerShared {
