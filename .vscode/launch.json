@@ -207,6 +207,22 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "run vislum-test",
+            "cwd": "${workspaceFolder}",
+            "program": "${workspaceFolder}/target/debug/vislum-test",
+            "env": {
+                "RUST_BACKTRACE": "short",
+                "RUSTC_TOOLCHAIN": "/home/victor/.rustup/toolchains/nightly-x86_64-unknown-linux-gnu"
+            },
+            "args": [],
+            "sourceMap": {},
+            "sourceLanguages": [
+                "rust"
+            ]
         }
     ]
 }
