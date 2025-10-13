@@ -2,7 +2,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use ash::{ext, khr, vk};
 
-use crate::{new_extensions_struct, rhi::{debug::debug_trampoline, device::{Device, PhysicalDevice}, util::{Version, read_into_vec}}};
+use crate::{new_extensions_struct, rhi::{debug::debug_trampoline, device::{Device, DeviceDescription, DeviceError, PhysicalDevice}, util::{Version, read_into_vec}}};
 
 new_extensions_struct! {
     pub struct InstanceExtensions {
@@ -211,8 +211,8 @@ impl Instance {
             .collect()
     }
 
-    pub fn create_device(self: &Arc<Self>, physical_device: Arc<PhysicalDevice>) -> Arc<Device> {
-        Device::from_raw(Arc::clone(self), physical_device)
+    pub fn create_device(self: &Arc<Self>, device_description: DeviceDescription) -> Result<Arc<Device>, DeviceError> {
+        Device::new(device_description)
     }
 
     /// Enumerate the supported extensions for the instance.

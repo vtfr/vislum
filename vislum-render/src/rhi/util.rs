@@ -83,9 +83,10 @@ macro_rules! new_extensions_struct {
 /// 
 /// First call reads the number of elements to allocate.
 /// Second call reads the elements into the vector.
-pub(crate) unsafe fn read_into_vec<T, F>(mut delegate: F) -> ash::prelude::VkResult<Vec<T>> 
+pub(in crate::rhi) unsafe fn read_into_vec<T, F>(mut delegate: F) -> ash::prelude::VkResult<Vec<T>> 
 where 
     F: FnMut(*mut u32, *mut T) -> vk::Result,
+    T: Copy,
 {
     let mut count = 0;
 
@@ -94,6 +95,7 @@ where
 
     let mut vec = Vec::with_capacity(count as usize);
 
+    // Defer processing the result until after the vector is set the appropriate length
     let result = delegate(&mut count, vec.as_mut_ptr());
 
     unsafe { vec.set_len(count as usize); }
