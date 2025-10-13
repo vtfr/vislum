@@ -21,7 +21,7 @@
 // }
 
 use log::LevelFilter;
-use vislum_render::rhi::{device::Device, instance::{Instance, InstanceExtensions}};
+use vislum_render::rhi::instance::{Instance, InstanceDescription, InstanceExtensions};
 
 fn main() {
     env_logger::Builder::new()
@@ -32,21 +32,34 @@ fn main() {
         .init();
 
     // let event_loop = winit::event_loop::EventLoop::new().unwrap();
+    let instance = Instance::new(InstanceDescription {
+        extensions: InstanceExtensions {
+            khr_surface: true,
+            khr_wayland_surface: true,
+            ext_debug_utils: true,
+            khr_get_physical_device_properties2: true,
+            khr_get_surface_capabilities2: true,
+            ext_swapchain_colorspace: true,
+            khr_portability_enumeration: true,
+            ..Default::default()
+        },
+    })
+    .unwrap();
 
-    let extensions = InstanceExtensions {
-        khr_swapchain: true,
-        khr_surface: true,
-        khr_wayland_surface: true,
-        ..Default::default()
-    };
-
-    let instance = unsafe { Instance::new() }.unwrap();
-
-    let physical_devices = instance.enumerate_compatible_devices().unwrap();
+    let physical_devices = instance.enumerate_physical_devices();
     for (i, physical_device) in physical_devices.iter().enumerate() {
-        println!("Physical device {i}: {:#?}", physical_device);
+        log::info!("Physical device {i}:");
+        log::info!(
+            "  Supported extensions: {}",
+            physical_device.supported_extensions()
+        );
+        log::info!(
+            "  Supported features: {}",
+            physical_device.supported_features()
+        );
+        log::info!("  Version: {}", physical_device.version());
     }
 
-    let device = Device::from_physical_device(instance, physical_devices[0].clone());
-    println!("Device: {:#?}", device);
+    let device = instance.create_device(physical_devices[0].clone());
+    log::info!("Device: {:?}", device);
 }
