@@ -2,7 +2,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use ash::{ext, khr, vk};
 
-use crate::{new_extensions_struct, rhi::{debug::debug_trampoline, device::{Device, DeviceFeatures, PhysicalDevice}, util::{Version, read_into_vec}}};
+use crate::{new_extensions_struct, rhi::{debug::debug_trampoline, device::{Device, PhysicalDevice}, util::{Version, read_into_vec}}};
 
 new_extensions_struct! {
     pub struct InstanceExtensions {
@@ -43,6 +43,7 @@ pub struct InstanceFns {
     pub(crate) vk_1_1: ash::InstanceFnV1_1,
     pub(crate) vk_1_3: ash::InstanceFnV1_3,
     pub(crate) khr_get_physical_device_properties2: Option<khr::get_physical_device_properties2::InstanceFn>,
+    pub(crate) khr_surface: Option<khr::surface::InstanceFn>,
 }
 
 impl InstanceFns {
@@ -65,6 +66,11 @@ impl InstanceFns {
     pub fn khr_get_physical_device_properties2(&self) -> Option<&khr::get_physical_device_properties2::InstanceFn> {
         self.khr_get_physical_device_properties2.as_ref()
     }
+
+    #[inline]
+    pub fn khr_surface(&self) -> Option<&khr::surface::InstanceFn> {
+        self.khr_surface.as_ref()
+    }
 }
 
 /// The description of the instance to create
@@ -74,10 +80,11 @@ pub struct InstanceDescription {
 }
 
 pub struct Instance {
-    _entry: ash::Entry,
+    pub(crate) entry: ash::Entry,
     instance: vk::Instance,
     instance_fns: InstanceFns,
     instance_version: Version,
+    enabled_extensions: InstanceExtensions,
 }
 
 impl Debug for Instance {
@@ -143,18 +150,23 @@ impl Instance {
         let ash_instance = unsafe { entry.create_instance(&create_info, None) }.unwrap();
         let instance = ash_instance.handle();
 
-        let instance_fns = InstanceFns {
-            vk_1_0: ash_instance.fp_v1_0().clone(),
-            vk_1_1: ash_instance.fp_v1_1().clone(),
-            vk_1_3: ash_instance.fp_v1_3().clone(),
-            khr_get_physical_device_properties2: Some(khr::get_physical_device_properties2::InstanceFn::load(load_fn_for(&entry, instance))),
+        let instance_fns = {
+            let mut load_fn = load_fn_for(&entry, instance);
+            InstanceFns {
+                vk_1_0: ash_instance.fp_v1_0().clone(),
+                vk_1_1: ash_instance.fp_v1_1().clone(),
+                vk_1_3: ash_instance.fp_v1_3().clone(),
+                khr_get_physical_device_properties2: Some(khr::get_physical_device_properties2::InstanceFn::load(&mut load_fn)),
+                khr_surface: description.extensions.khr_surface.then(|| khr::surface::InstanceFn::load(&mut load_fn)),
+           }
         };
 
         Ok(Arc::new(Self { 
-            _entry: entry,
+            entry,
             instance: ash_instance.handle(),
             instance_fns,
             instance_version,
+            enabled_extensions: description.extensions,
         }))
     }
 
@@ -171,6 +183,16 @@ impl Instance {
     #[inline]
     pub fn version(&self) -> Version {
         self.instance_version
+    }
+
+    #[inline]
+    pub fn extensions(&self) -> &InstanceExtensions {
+        &self.enabled_extensions
+    }
+
+    #[inline]
+    pub(crate) fn entry(&self) -> &ash::Entry {
+        &self.entry
     }
 
     /// Enumerate the physical devices on the instance.
@@ -208,7 +230,7 @@ impl Instance {
 }
 
 
-fn load_fn_for(entry: &ash::Entry, instance: vk::Instance) -> impl FnMut(&std::ffi::CStr) -> *const std::ffi::c_void {
+pub(in crate::rhi) fn load_fn_for(entry: &ash::Entry, instance: vk::Instance) -> impl FnMut(&std::ffi::CStr) -> *const std::ffi::c_void {
     move |name: &std::ffi::CStr| -> *const std::ffi::c_void {
         unsafe {
             std::mem::transmute(entry.get_instance_proc_addr(instance, name.as_ptr() as *const std::ffi::c_char))
