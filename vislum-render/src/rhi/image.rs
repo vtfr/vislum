@@ -16,7 +16,7 @@ impl ImageView {
         image: vk::Image,
         format: vk::Format,
         aspect_mask: vk::ImageAspectFlags,
-    ) -> Arc<Self> {
+    ) -> Self {
         let create_info = vk::ImageViewCreateInfo::default()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
@@ -35,9 +35,9 @@ impl ImageView {
                 layer_count: 1,
             });
 
-        let image_view = unsafe { device.handle().create_image_view(&create_info, None).unwrap() };
+        let image_view = unsafe { device.vk().create_image_view(&create_info, None).unwrap() };
 
-        Arc::new(Self { device, image_view })
+        Self { device, image_view }
     }
 
     #[inline]
@@ -54,7 +54,7 @@ impl ImageView {
 impl Drop for ImageView {
     fn drop(&mut self) {
         unsafe {
-            self.device.handle().destroy_image_view(self.image_view, None);
+            self.device.vk().destroy_image_view(self.image_view, None);
         }
     }
 }

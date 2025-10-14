@@ -58,7 +58,7 @@ impl Swapchain {
     pub fn new(
         device: Arc<Device>,
         description: SwapchainDescription,
-    ) -> Result<Arc<Self>, SwapchainError> {
+    ) -> Result<Self, SwapchainError> {
         use ash::khr;
 
         let SwapchainDescription {
@@ -195,7 +195,7 @@ impl Swapchain {
         // Get swapchain images
         let images = unsafe { khr_swapchain_device.get_swapchain_images(swapchain_khr)? };
 
-        Ok(Arc::new(Self {
+        Ok(Self {
             device,
             surface,
             swapchain: swapchain_khr,
@@ -204,7 +204,7 @@ impl Swapchain {
             color_space,
             extent,
             present_mode,
-        }))
+        })
     }
 
     #[inline]

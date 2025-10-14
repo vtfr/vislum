@@ -7,7 +7,7 @@ use crate::{
     rhi::{
         debug::debug_trampoline,
         device::{Device, DeviceDescription, DeviceError, PhysicalDevice},
-        util::VkVersion,
+        util::Version,
     },
 };
 
@@ -69,7 +69,7 @@ pub struct Instance {
     khr_surface_instance: Option<khr::surface::Instance>,
 
     /// The version of the instance.
-    version: VkVersion,
+    version: Version,
 
     /// The extensions enabled for the instance.
     extensions: InstanceExtensions,
@@ -98,16 +98,16 @@ impl Instance {
 
         // Get the instance version
         let instance_version = match unsafe { entry.try_enumerate_instance_version() } {
-            Ok(Some(version)) => VkVersion::from_vk(version),
-            Ok(None) => VkVersion::VERSION_1_0,
+            Ok(Some(version)) => Version::from_vk(version),
+            Ok(None) => Version::VERSION_1_0,
             Err(e) => {
                 log::error!("failed to enumerate instance version. Falling back to 1.0.0: {e}");
-                VkVersion::VERSION_1_0
+                Version::VERSION_1_0
             }
         };
 
         // Cap the version to 1.3.0
-        let instance_version = instance_version.min(VkVersion::VERSION_1_3);
+        let instance_version = instance_version.min(Version::VERSION_1_3);
 
         let supported_instance_extensions = Self::enumerate_supported_extensions(&entry);
         log::debug!(
@@ -168,11 +168,14 @@ impl Instance {
     }
 
     #[inline]
-    pub fn instance(&self) -> &ash::Instance {
+    pub fn vk(&self) -> &ash::Instance {
         &self.instance
     }
 
-    /// The KHR_get_physical_device_properties2 instance extension.
+    /// The "KHR_get_physical_device_properties2" instance extension.
+    ///
+    /// When this object is [`Some`], callers should use methods provided by this instance,
+    /// instead of those available on the [`ash::Instance`] returned by [`Instance::vk()`].
     #[inline]
     pub fn khr_get_physical_device_properties2_instance(
         &self,
@@ -180,14 +183,14 @@ impl Instance {
         self.khr_get_physical_device_properties2_instance.as_ref()
     }
 
-    /// The KHR_surface instance extension.
+    /// The "KHR_surface" instance extension.
     #[inline]
     pub fn khr_surface_instance(&self) -> Option<&khr::surface::Instance> {
         self.khr_surface_instance.as_ref()
     }
 
     #[inline]
-    pub fn version(&self) -> VkVersion {
+    pub fn version(&self) -> Version {
         self.version
     }
 

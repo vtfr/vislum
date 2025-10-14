@@ -76,19 +76,19 @@ macro_rules! new_extensions_struct {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct VkVersion {
+pub struct Version {
     pub major: u32,
     pub minor: u32,
     pub patch: u32,
 }
 
-impl Display for VkVersion {
+impl Display for Version {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
-impl VkVersion {
+impl Version {
     pub const VERSION_1_0: Self = Self::new(1, 0, 0);
     pub const VERSION_1_1: Self = Self::new(1, 1, 0);
     pub const VERSION_1_2: Self = Self::new(1, 2, 0);

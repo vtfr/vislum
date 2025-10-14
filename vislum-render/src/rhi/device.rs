@@ -6,7 +6,7 @@ use crate::{
     new_extensions_struct,
     rhi::{
         instance::Instance,
-        util::VkVersion,
+        util::Version,
     },
 };
 
@@ -82,7 +82,7 @@ device_features_impl! {
 pub struct PhysicalDevice {
     instance: Arc<Instance>,
     physical_device: vk::PhysicalDevice,
-    version: VkVersion,
+    version: Version,
     supported_device_extensions: DeviceExtensions,
     supported_features: DeviceFeatures,
 }
@@ -135,7 +135,7 @@ impl PhysicalDevice {
 
     /// The version of the physical device, capped to the instance version.
     #[inline]
-    pub fn version(&self) -> VkVersion {
+    pub fn version(&self) -> Version {
         self.version
     }
 
@@ -148,7 +148,7 @@ impl PhysicalDevice {
     fn get_physical_device_version(
         instance: &Arc<Instance>,
         physical_device: vk::PhysicalDevice,
-    ) -> VkVersion {
+    ) -> Version {
         let mut vk_properties = vk::PhysicalDeviceProperties2::default();
 
         unsafe {
@@ -157,7 +157,7 @@ impl PhysicalDevice {
                     instance.get_physical_device_properties2(physical_device, &mut vk_properties)
                 }
                 None => instance
-                    .instance()
+                    .vk()
                     .get_physical_device_properties2(physical_device, &mut vk_properties),
             }
         }
@@ -165,7 +165,7 @@ impl PhysicalDevice {
         // Cap the version to the instance version
         std::cmp::min(
             instance.version(),
-            VkVersion::from_vk(vk_properties.properties.api_version),
+            Version::from_vk(vk_properties.properties.api_version),
         )
     }
 
@@ -200,7 +200,7 @@ impl PhysicalDevice {
             },
             None => unsafe {
                 instance
-                    .instance()
+                    .vk()
                     .get_physical_device_features2(physical_device, &mut vk_features)
             },
         };
@@ -226,7 +226,7 @@ impl PhysicalDevice {
     ) -> DeviceExtensions {
         let extension_properties = unsafe {
             instance
-                .instance()
+                .vk()
                 .enumerate_device_extension_properties(physical_device)
                 .unwrap_or_default()
         };
@@ -313,19 +313,19 @@ impl Device {
             None::<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>;
 
         // Add features promoted to Vulkan 1.1
-        if physical_device.version() >= VkVersion::VERSION_1_1 {
+        if physical_device.version() >= Version::VERSION_1_1 {
             let next = vk_vulkan_1_1_features.insert(vk::PhysicalDeviceVulkan11Features::default());
             vk_create_info = vk_create_info.push_next(next);
         }
 
         // Add features promoted to Vulkan 1.2
-        if physical_device.version() >= VkVersion::VERSION_1_2 {
+        if physical_device.version() >= Version::VERSION_1_2 {
             let next = vk_vulkan_1_2_features.insert(vk::PhysicalDeviceVulkan12Features::default());
             vk_create_info = vk_create_info.push_next(next);
         }
 
         // Add features promoted to Vulkan 1.3
-        if physical_device.version() >= VkVersion::VERSION_1_3 {
+        if physical_device.version() >= Version::VERSION_1_3 {
             vk_create_info = vk_create_info.push_next(
                 vk_vulkan_1_3_features.insert(
                     vk::PhysicalDeviceVulkan13Features::default()
@@ -375,21 +375,21 @@ impl Device {
 
         let device = unsafe {
             instance
-                .instance()
+                .vk()
                 .create_device(physical_device.handle(), &vk_create_info, None)
                 .unwrap()
         };
 
         let khr_synchronization2_device = (device_description.extensions.khr_synchronization2)
-            .then(|| khr::synchronization2::Device::new(instance.instance(), &device));
+            .then(|| khr::synchronization2::Device::new(instance.vk(), &device));
         let khr_dynamic_rendering_device = (device_description.extensions.khr_dynamic_rendering)
-            .then(|| khr::dynamic_rendering::Device::new(instance.instance(), &device));
+            .then(|| khr::dynamic_rendering::Device::new(instance.vk(), &device));
         let khr_swapchain_device = (device_description.extensions.khr_swapchain)
-            .then(|| khr::swapchain::Device::new(instance.instance(), &device));
+            .then(|| khr::swapchain::Device::new(instance.vk(), &device));
         let ext_extended_dynamic_state_device = (device_description
             .extensions
             .ext_extended_dynamic_state)
-            .then(|| ash::ext::extended_dynamic_state::Device::new(instance.instance(), &device));
+            .then(|| ash::ext::extended_dynamic_state::Device::new(instance.vk(), &device));
 
         Ok(Arc::new(Self {
             instance,
@@ -404,7 +404,7 @@ impl Device {
     }
 
     #[inline]
-    pub fn handle(&self) -> &ash::Device {
+    pub fn vk(&self) -> &ash::Device {
         &self.device
     }
 

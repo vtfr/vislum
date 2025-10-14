@@ -36,7 +36,7 @@ impl Surface {
     pub fn new(
         instance: Arc<Instance>,
         window: &winit::window::Window,
-    ) -> Result<Arc<Self>, SurfaceError> {
+    ) -> Result<Self, SurfaceError> {
         use winit::raw_window_handle::{
             HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
         };
@@ -70,7 +70,7 @@ impl Surface {
             }
         };
 
-        Ok(Arc::new(Self { instance, surface }))
+        Ok(Self { instance, surface })
     }
 
     #[cfg(target_os = "linux")]
@@ -85,7 +85,7 @@ impl Surface {
             ));
         }
 
-        let loader = khr::wayland_surface::Instance::new(instance.entry(), instance.instance());
+        let loader = khr::wayland_surface::Instance::new(instance.entry(), instance.vk());
 
         let create_info = vk::WaylandSurfaceCreateInfoKHR::default()
             .display(display.display.as_ptr())
@@ -108,7 +108,7 @@ impl Surface {
             return Err(SurfaceError::extension_not_enabled(khr::xlib_surface::NAME));
         }
 
-        let loader = khr::xlib_surface::Instance::new(instance.entry(), instance.instance());
+        let loader = khr::xlib_surface::Instance::new(instance.entry(), instance.vk());
 
         let create_info = vk::XlibSurfaceCreateInfoKHR::default()
             .dpy(display.display.unwrap().as_ptr() as *mut _)
@@ -131,7 +131,7 @@ impl Surface {
             return Err(SurfaceError::extension_not_enabled(khr::xcb_surface::NAME));
         }
 
-        let loader = khr::xcb_surface::Instance::new(instance.entry(), instance.instance());
+        let loader = khr::xcb_surface::Instance::new(instance.entry(), instance.vk());
 
         let create_info = vk::XcbSurfaceCreateInfoKHR::default()
             .connection(display.connection.unwrap().as_ptr())

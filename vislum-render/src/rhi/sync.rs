@@ -11,17 +11,17 @@ pub struct Semaphore {
 
 impl Semaphore {
     /// Create a new semaphore
-    pub fn new(device: Arc<Device>) -> Arc<Self> {
+    pub fn new(device: Arc<Device>) -> Self {
         let create_info = vk::SemaphoreCreateInfo::default();
 
         let semaphore = unsafe {
             device
-                .handle()
+                .vk()
                 .create_semaphore(&create_info, None)
                 .unwrap()
         };
 
-        Arc::new(Self { device, semaphore })
+        Self { device, semaphore }
     }
 
     #[inline]
@@ -38,7 +38,7 @@ impl Semaphore {
 impl Drop for Semaphore {
     fn drop(&mut self) {
         unsafe {
-            self.device.handle().destroy_semaphore(self.semaphore, None);
+            self.device.vk().destroy_semaphore(self.semaphore, None);
         }
     }
 }
@@ -57,7 +57,7 @@ pub struct FenceDescription {
 
 impl Fence {
     /// Create a new fence
-    pub fn new(device: Arc<Device>, description: FenceDescription) -> Arc<Self> {
+    pub fn new(device: Arc<Device>, description: FenceDescription) -> Self {
         let mut flags = vk::FenceCreateFlags::empty();
         if description.signaled {
             flags |= vk::FenceCreateFlags::SIGNALED;
@@ -65,9 +65,9 @@ impl Fence {
 
         let create_info = vk::FenceCreateInfo::default().flags(flags);
 
-        let fence = unsafe { device.handle().create_fence(&create_info, None).unwrap() };
+        let fence = unsafe { device.vk().create_fence(&create_info, None).unwrap() };
 
-        Arc::new(Self { device, fence })
+        Self { device, fence }
     }
 
     #[inline]
@@ -84,7 +84,7 @@ impl Fence {
     pub fn wait(&self, timeout: u64) {
         unsafe {
             self.device
-                .handle()
+                .vk()
                 .wait_for_fences(&[self.fence], true, timeout)
                 .unwrap();
         }
@@ -93,7 +93,7 @@ impl Fence {
     /// Reset the fence to unsignaled state
     pub fn reset(&self) -> Result<(), vk::Result> {
         unsafe {
-            self.device.handle().reset_fences(&[self.fence]).unwrap();
+            self.device.vk().reset_fences(&[self.fence]).unwrap();
         }
 
         Ok(())
@@ -103,7 +103,7 @@ impl Fence {
 impl Drop for Fence {
     fn drop(&mut self) {
         unsafe {
-            self.device.handle().destroy_fence(self.fence, None);
+            self.device.vk().destroy_fence(self.fence, None);
         }
     }
 }
