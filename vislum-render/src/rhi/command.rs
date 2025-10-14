@@ -1,6 +1,9 @@
-use std::{ops::{Range, RangeBounds, RangeFull, RangeInclusive}, sync::Arc};
-use ash::vk;
 use super::device::Device;
+use ash::vk;
+use std::{
+    ops::{Range, RangeBounds, RangeFull, RangeInclusive},
+    sync::Arc,
+};
 
 /// A command pool for allocating command buffers
 #[derive(Debug)]
@@ -21,15 +24,12 @@ impl CommandPool {
             .flags(flags)
             .queue_family_index(queue_family_index);
 
-        let mut pool = vk::CommandPool::null();
-        unsafe {
-            (device.fns().vk_1_0().create_command_pool)(
-                device.handle(),
-                &create_info,
-                std::ptr::null(),
-                &mut pool,
-            ).result()?;
-        }
+        let pool = unsafe {
+            device
+                .handle()
+                .create_command_pool(&create_info, None)
+                .unwrap()
+        };
 
         Ok(Arc::new(Self {
             device,
@@ -64,14 +64,10 @@ impl CommandPool {
             .level(level)
             .command_buffer_count(count);
 
-        let mut command_buffers = vec![vk::CommandBuffer::null(); count as usize];
-        unsafe {
-            (self.device.fns().vk_1_0().allocate_command_buffers)(
-                self.device.handle(),
-                &alloc_info,
-                command_buffers.as_mut_ptr(),
-            ).result()?;
-        }
+        let command_buffers = unsafe {
+            self.device.handle()
+                .allocate_command_buffers(&alloc_info)?
+        };
 
         Ok(command_buffers
             .into_iter()
@@ -86,11 +82,7 @@ impl CommandPool {
 impl Drop for CommandPool {
     fn drop(&mut self) {
         unsafe {
-            (self.device.fns().vk_1_0().destroy_command_pool)(
-                self.device.handle(),
-                self.pool,
-                std::ptr::null(),
-            );
+            self.device.handle().destroy_command_pool(self.pool, None);
         }
     }
 }
@@ -119,59 +111,59 @@ impl CommandBuffer {
     }
 
     /// Reset the command buffer
-    pub fn reset(&self, flags: vk::CommandBufferResetFlags) -> Result<(), vk::Result> {
+    pub fn reset(&self, flags: vk::CommandBufferResetFlags) {
         unsafe {
-            (self.device().fns().vk_1_0().reset_command_buffer)(
-                self.buffer,
-                flags,
-            ).result()
+            self.pool
+                .device()
+                .handle()
+                .reset_command_buffer(self.buffer, flags)
+                .unwrap()
         }
     }
 
     /// Begin recording commands
-    pub fn begin(&self, flags: vk::CommandBufferUsageFlags) -> Result<(), vk::Result> {
-        let begin_info = vk::CommandBufferBeginInfo::default()
-            .flags(flags);
+    pub fn begin(&self, flags: vk::CommandBufferUsageFlags) {
+        let begin_info = vk::CommandBufferBeginInfo::default().flags(flags);
 
         unsafe {
-            (self.device().fns().vk_1_0().begin_command_buffer)(
-                self.buffer,
-                &begin_info,
-            ).result()
+            self.pool
+                .device()
+                .handle()
+                .begin_command_buffer(self.buffer, &begin_info)
+                .unwrap()
         }
     }
 
     /// End recording commands
-    pub fn end(&self) -> Result<(), vk::Result> {
+    pub fn end(&self) {
         unsafe {
-            (self.device().fns().vk_1_0().end_command_buffer)(self.buffer).result()
+            self.pool
+                .device()
+                .handle()
+                .end_command_buffer(self.buffer)
+                .unwrap()
         }
     }
 
     /// Bind a graphics pipeline
     pub fn bind_pipeline(&self, bind_point: vk::PipelineBindPoint, pipeline: vk::Pipeline) {
         unsafe {
-            (self.device().fns().vk_1_0().cmd_bind_pipeline)(
-                self.buffer,
-                bind_point,
-                pipeline,
-            );
+            self.pool
+                .device()
+                .handle()
+                .cmd_bind_pipeline(self.buffer, bind_point, pipeline);
         }
     }
 
     /// Draw primitives
-    pub fn draw(
-        &self,
-        vertices: Range<u32>,
-        instances: Range<u32>,
-    ) {
+    pub fn draw(&self, vertices: Range<u32>, instances: Range<u32>) {
         let vertex_count = vertices.len() as u32;
         let instance_count = instances.len() as u32;
         let first_vertex = vertices.start;
         let first_instance = instances.start;
 
         unsafe {
-            (self.device().fns().vk_1_0().cmd_draw)(
+            self.pool.device().handle().cmd_draw(
                 self.buffer,
                 vertex_count,
                 instance_count,
@@ -183,29 +175,23 @@ impl CommandBuffer {
 
     /// Begin dynamic rendering (Vulkan 1.3 / VK_KHR_dynamic_rendering)
     pub fn begin_rendering(&self, rendering_info: &vk::RenderingInfo) {
-        let device = self.device();
-        
-        let cmd_begin_rendering = match device.fns().khr_dynamic_rendering() {
-            Some(fns) => fns.cmd_begin_rendering_khr,
-            None => device.fns().vk_1_3().cmd_begin_rendering,
-        };
-
+        let device = self.pool.device();
         unsafe {
-            (cmd_begin_rendering)(self.buffer, rendering_info);
+            match device.khr_dynamic_rendering_device() {
+                Some(device) => device.cmd_begin_rendering(self.buffer, rendering_info),
+                None => device.handle().cmd_begin_rendering(self.buffer, rendering_info),
+            }
         }
     }
 
     /// End dynamic rendering (Vulkan 1.3 / VK_KHR_dynamic_rendering)
     pub fn end_rendering(&self) {
-        let device = self.device();
-        
-        let cmd_end_rendering = match device.fns().khr_dynamic_rendering() {
-            Some(fns) => fns.cmd_end_rendering_khr,
-            None => device.fns().vk_1_3().cmd_end_rendering,
-        };
-
+        let device = self.pool.device();
         unsafe {
-            (cmd_end_rendering)(self.buffer);
+            match device.khr_dynamic_rendering_device() {
+                Some(device) => device.cmd_end_rendering(self.buffer),
+                None => device.handle().cmd_end_rendering(self.buffer),
+            }
         }
     }
 
@@ -213,149 +199,112 @@ impl CommandBuffer {
 
     /// Set cull mode dynamically
     pub fn set_cull_mode(&self, cull_mode: vk::CullModeFlags) {
-        let device = self.device();
-        
-        let cmd_set_cull_mode = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_cull_mode_ext,
-            None => device.fns().vk_1_3().cmd_set_cull_mode,
-        };
-        
+        let device = self.pool.device();
         unsafe {
-            (cmd_set_cull_mode)(self.buffer, cull_mode);
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_cull_mode(self.buffer, cull_mode),
+                None => device.handle().cmd_set_cull_mode(self.buffer, cull_mode),
+            }
         }
     }
 
     /// Set front face winding order dynamically
     pub fn set_front_face(&self, front_face: vk::FrontFace) {
-        let device = self.device();
-        
-        let cmd_set_front_face = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_front_face_ext,
-            None => device.fns().vk_1_3().cmd_set_front_face,
-        };
-        
+        let device = self.pool.device();
         unsafe {
-            (cmd_set_front_face)(self.buffer, front_face);
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_front_face(self.buffer, front_face),
+                None => device.handle().cmd_set_front_face(self.buffer, front_face),
+            }
         }
     }
 
     /// Set primitive topology dynamically
     pub fn set_primitive_topology(&self, topology: vk::PrimitiveTopology) {
-        let device = self.device();
-        
-        let cmd_set_primitive_topology = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_primitive_topology_ext,
-            None => device.fns().vk_1_3().cmd_set_primitive_topology,
-        };
-        
+        let device = self.pool.device();
         unsafe {
-            (cmd_set_primitive_topology)(self.buffer, topology);
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_primitive_topology(self.buffer, topology),
+                None => device.handle().cmd_set_primitive_topology(self.buffer, topology),
+            }
         }
     }
 
     /// Set viewport with count dynamically
     pub fn set_viewport_with_count(&self, viewports: &[vk::Viewport]) {
-        let device = self.device();
-        
-        let cmd_set_viewport_with_count = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_viewport_with_count_ext,
-            None => device.fns().vk_1_3().cmd_set_viewport_with_count,
-        };
-        
+        let device = self.pool.device();
         unsafe {
-            (cmd_set_viewport_with_count)(
-                self.buffer,
-                viewports.len() as u32,
-                viewports.as_ptr(),
-            );
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_viewport_with_count(self.buffer, viewports),
+                None => device.handle().cmd_set_viewport_with_count(self.buffer, viewports),
+            }
         }
     }
 
     /// Set scissor with count dynamically
     pub fn set_scissor_with_count(&self, scissors: &[vk::Rect2D]) {
-        let device = self.device();
-        
-        let cmd_set_scissor_with_count = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_scissor_with_count_ext,
-            None => device.fns().vk_1_3().cmd_set_scissor_with_count,
-        };
-        
+        let device = self.pool.device();
         unsafe {
-            (cmd_set_scissor_with_count)(
-                self.buffer,
-                scissors.len() as u32,
-                scissors.as_ptr(),
-            );
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_scissor_with_count(self.buffer, scissors),
+                None => device.handle().cmd_set_scissor_with_count(self.buffer, scissors),
+            }
         }
     }
 
     /// Enable/disable depth test dynamically
     pub fn set_depth_test_enable(&self, enable: bool) {
-        let device = self.device();
-        
-        let cmd_set_depth_test_enable = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_depth_test_enable_ext,
-            None => device.fns().vk_1_3().cmd_set_depth_test_enable,
-        };
-        
+        let device = self.pool.device();
         unsafe {
-            (cmd_set_depth_test_enable)(self.buffer, enable.into());
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_depth_test_enable(self.buffer, enable.into()),
+                None => device.handle().cmd_set_depth_test_enable(self.buffer, enable.into()),
+            }
         }
     }
 
     /// Enable/disable depth write dynamically
     pub fn set_depth_write_enable(&self, enable: bool) {
-        let device = self.device();
-        
-        let cmd_set_depth_write_enable = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_depth_write_enable_ext,
-            None => device.fns().vk_1_3().cmd_set_depth_write_enable,
-        };
-        
+        let device = self.pool
+                .device();
         unsafe {
-            (cmd_set_depth_write_enable)(self.buffer, enable.into());
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_depth_write_enable(self.buffer, enable.into()),
+                None => device.handle().cmd_set_depth_write_enable(self.buffer, enable.into()),
+            }
         }
     }
 
     /// Set depth compare operation dynamically
     pub fn set_depth_compare_op(&self, compare_op: vk::CompareOp) {
-        let device = self.device();
-        
-        let cmd_set_depth_compare_op = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_depth_compare_op_ext,
-            None => device.fns().vk_1_3().cmd_set_depth_compare_op,
-        };
-        
+        let device = self.pool.device();
         unsafe {
-            (cmd_set_depth_compare_op)(self.buffer, compare_op);
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_depth_compare_op(self.buffer, compare_op),
+                None => device.handle().cmd_set_depth_compare_op(self.buffer, compare_op),
+            }
         }
     }
 
     /// Enable/disable depth bounds test dynamically
     pub fn set_depth_bounds_test_enable(&self, enable: bool) {
-        let device = self.device();
-        
-        let cmd_set_depth_bounds_test_enable = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_depth_bounds_test_enable_ext,
-            None => device.fns().vk_1_3().cmd_set_depth_bounds_test_enable,
-        };
-        
+        let device = self.pool.device();
         unsafe {
-            (cmd_set_depth_bounds_test_enable)(self.buffer, enable.into());
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_depth_bounds_test_enable(self.buffer, enable.into()),
+                None => device.handle().cmd_set_depth_bounds_test_enable(self.buffer, enable.into()),
+            }
         }
     }
 
     /// Enable/disable stencil test dynamically
     pub fn set_stencil_test_enable(&self, enable: bool) {
-        let device = self.device();
-        
-        let cmd_set_stencil_test_enable = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_stencil_test_enable_ext,
-            None => device.fns().vk_1_3().cmd_set_stencil_test_enable,
-        };
-        
+        let device = self.pool.device();
         unsafe {
-            (cmd_set_stencil_test_enable)(self.buffer, enable.into());
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_stencil_test_enable(self.buffer, enable.into()),
+                None => device.handle().cmd_set_stencil_test_enable(self.buffer, enable.into()),
+            }
         }
     }
 
@@ -368,23 +317,26 @@ impl CommandBuffer {
         depth_fail_op: vk::StencilOp,
         compare_op: vk::CompareOp,
     ) {
-        let device = self.device();
-        
-        let cmd_set_stencil_op = match device.fns().ext_extended_dynamic_state() {
-            Some(fns) => fns.cmd_set_stencil_op_ext,
-            None => device.fns().vk_1_3().cmd_set_stencil_op,
-        };
-        
+        let device = self.pool.device();
         unsafe {
-            (cmd_set_stencil_op)(
-                self.buffer,
-                face_mask,
-                fail_op,
-                pass_op,
-                depth_fail_op,
-                compare_op,
-            );
+            match device.ext_extended_dynamic_state_device() {
+                Some(device) => device.cmd_set_stencil_op(
+                    self.buffer,
+                    face_mask,
+                    fail_op,
+                    pass_op,
+                    depth_fail_op,
+                    compare_op,
+                ),
+                None => device.handle().cmd_set_stencil_op(
+                    self.buffer,
+                    face_mask,
+                    fail_op,
+                    pass_op,
+                    depth_fail_op,
+                    compare_op,
+                ),
+            }
         }
     }
 }
-

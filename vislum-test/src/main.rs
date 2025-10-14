@@ -39,18 +39,18 @@ struct TriangleDemo {
 impl TriangleDemo {
     fn new() -> Self {
         // Create instance early
-        let instance = Instance::new(InstanceDescription {
-            extensions: InstanceExtensions {
-                khr_surface: true,
-                khr_wayland_surface: true,
-                ext_debug_utils: true,
-                khr_get_physical_device_properties2: true,
-                khr_get_surface_capabilities2: true,
-                ext_swapchain_colorspace: true,
-                khr_portability_enumeration: true,
-                ..Default::default()
-            },
-        })
+    let instance = Instance::new(InstanceDescription {
+        extensions: InstanceExtensions {
+            khr_surface: true,
+            khr_wayland_surface: true,
+            ext_debug_utils: true,
+            khr_get_physical_device_properties2: true,
+            khr_get_surface_capabilities2: true,
+            ext_swapchain_colorspace: true,
+            khr_portability_enumeration: true,
+            ..Default::default()
+        },
+    })
         .expect("Failed to create Vulkan instance");
 
         Self {
@@ -75,10 +75,10 @@ impl TriangleDemo {
 
     fn init_vulkan(&mut self) {
         let instance = self.instance.as_ref().unwrap();
-        let physical_devices = instance.enumerate_physical_devices();
+    let physical_devices = instance.enumerate_physical_devices();
         
         log::info!("Found {} physical device(s)", physical_devices.len());
-        for (i, physical_device) in physical_devices.iter().enumerate() {
+    for (i, physical_device) in physical_devices.iter().enumerate() {
             log::info!("Physical device {i}: {}", physical_device.supported_extensions());
         }
 
@@ -103,9 +103,7 @@ impl TriangleDemo {
 
         // Get queue
         let queue = unsafe {
-            let mut queue = ash::vk::Queue::null();
-            (device.fns().vk_1_0().get_device_queue)(device.handle(), 0, 0, &mut queue);
-            queue
+            device.handle().get_device_queue(0, 0)
         };
         self.queue = queue;
 
@@ -179,19 +177,11 @@ impl TriangleDemo {
         let create_info = vk::ShaderModuleCreateInfo::default()
             .code(&code_u32);
 
-        let mut shader_module = vk::ShaderModule::null();
         unsafe {
-            (device.fns().vk_1_0().create_shader_module)(
-                device.handle(),
-                &create_info,
-                std::ptr::null(),
-                &mut shader_module,
-            )
-            .result()
-            .expect("Failed to create shader module");
+            device.handle()
+                .create_shader_module(&create_info, None)
+                .expect("Failed to create shader module")
         }
-
-        shader_module
     }
 
     fn create_pipeline(&mut self) {
@@ -201,17 +191,11 @@ impl TriangleDemo {
         // Create pipeline layout
         let layout_create_info = vk::PipelineLayoutCreateInfo::default();
 
-        let mut pipeline_layout = vk::PipelineLayout::null();
-        unsafe {
-            (device.fns().vk_1_0().create_pipeline_layout)(
-                device.handle(),
-                &layout_create_info,
-                std::ptr::null(),
-                &mut pipeline_layout,
-            )
-            .result()
-            .expect("Failed to create pipeline layout");
-        }
+        let pipeline_layout = unsafe {
+            device.handle()
+                .create_pipeline_layout(&layout_create_info, None)
+                .expect("Failed to create pipeline layout")
+        };
         self.pipeline_layout = Some(pipeline_layout);
 
         // Shader stages
@@ -291,20 +275,12 @@ impl TriangleDemo {
             .push_next(&mut pipeline_rendering_info);
 
         let pipeline_infos = [pipeline_info];
-        let mut pipelines = [vk::Pipeline::null()];
         
-        unsafe {
-            (device.fns().vk_1_0().create_graphics_pipelines)(
-                device.handle(),
-                vk::PipelineCache::null(),
-                1,
-                pipeline_infos.as_ptr(),
-                std::ptr::null(),
-                pipelines.as_mut_ptr(),
-            )
-            .result()
-            .expect("Failed to create graphics pipeline");
-        }
+        let pipelines = unsafe {
+            device.handle()
+                .create_graphics_pipelines(vk::PipelineCache::null(), &pipeline_infos, None)
+                .expect("Failed to create graphics pipeline")
+        };
 
         self.pipeline = Some(pipelines[0]);
     }
@@ -385,12 +361,10 @@ impl TriangleDemo {
         let command_buffer = &self.command_buffers[image_index as usize];
 
         command_buffer
-            .reset(vk::CommandBufferResetFlags::empty())
-            .expect("Failed to reset command buffer");
+            .reset(vk::CommandBufferResetFlags::empty());
 
         command_buffer
-            .begin(vk::CommandBufferUsageFlags::empty())
-            .expect("Failed to begin command buffer");
+            .begin(vk::CommandBufferUsageFlags::empty());
 
         // Dynamic rendering
         let clear_value = vk::ClearValue {
@@ -440,9 +414,7 @@ impl TriangleDemo {
         command_buffer.draw(0..3, 0..1);
         command_buffer.end_rendering();
 
-        command_buffer
-            .end()
-            .expect("Failed to end command buffer");
+        command_buffer.end();
 
         // Submit command buffer
         let wait_semaphores = [image_available.handle()];
@@ -458,14 +430,9 @@ impl TriangleDemo {
 
         let submit_infos = [submit_info];
         unsafe {
-            (device.fns().vk_1_0().queue_submit)(
-                self.queue,
-                1,
-                submit_infos.as_ptr(),
-                fence.handle(),
-            )
-            .result()
-            .expect("Failed to submit draw command buffer");
+            device.handle()
+                .queue_submit(self.queue, &submit_infos, fence.handle())
+                .expect("Failed to submit draw command buffer");
         }
 
         // Present
@@ -480,26 +447,26 @@ impl TriangleDemo {
         let device = self.device.as_ref().unwrap();
 
         unsafe {
-            let _ = (device.fns().vk_1_0().device_wait_idle)(device.handle());
+            let _ = device.handle().device_wait_idle();
 
             // Sync objects, command pool, and image views are automatically cleaned up by Drop
 
             // Destroy pipeline
             if let Some(pipeline) = self.pipeline {
-                (device.fns().vk_1_0().destroy_pipeline)(device.handle(), pipeline, std::ptr::null());
+                device.handle().destroy_pipeline(pipeline, None);
             }
 
             // Destroy pipeline layout
             if let Some(layout) = self.pipeline_layout {
-                (device.fns().vk_1_0().destroy_pipeline_layout)(device.handle(), layout, std::ptr::null());
+                device.handle().destroy_pipeline_layout(layout, None);
             }
 
             // Destroy shader modules
             if let Some(module) = self.vertex_shader_module {
-                (device.fns().vk_1_0().destroy_shader_module)(device.handle(), module, std::ptr::null());
+                device.handle().destroy_shader_module(module, None);
             }
             if let Some(module) = self.fragment_shader_module {
-                (device.fns().vk_1_0().destroy_shader_module)(device.handle(), module, std::ptr::null());
+                device.handle().destroy_shader_module(module, None);
             }
         }
     }

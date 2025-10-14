@@ -1,6 +1,6 @@
 use std::{ffi::CStr, sync::Arc};
 
-use ash::vk;
+use ash::{khr, vk};
 
 use super::{device::Device, surface::Surface};
 
@@ -72,61 +72,56 @@ impl Swapchain {
         } = description;
 
         // Check that the swapchain extension is enabled
-        if device.fns().khr_swapchain().is_none() {
-            return Err(SwapchainError::extension_not_enabled(khr::swapchain::NAME));
-        }
+        let khr_surface_instance = device
+            .instance()
+            .khr_surface_instance()
+            .ok_or(SwapchainError::extension_not_enabled(khr::surface::NAME))?;
+        let khr_swapchain_device = device
+            .khr_swapchain_device()
+            .ok_or(SwapchainError::extension_not_enabled(khr::swapchain::NAME))?;
 
         let physical_device = device.physical_device();
-        
+
         // Query surface capabilities
-        let surface_fns = device.instance().fns().khr_surface()
-            .expect("khr_surface must be loaded to use swapchains");
-        
-        // Query surface capabilities
-        let mut surface_capabilities = vk::SurfaceCapabilitiesKHR::default();
-        unsafe {
-            (surface_fns.get_physical_device_surface_capabilities_khr)(
+        let surface_capabilities = unsafe {
+            khr_surface_instance.get_physical_device_surface_capabilities(
                 physical_device.handle(),
                 surface.handle(),
-                &mut surface_capabilities,
-            ).result()?;
-        }
+            )?
+        };
 
         // Query surface formats
         let surface_formats = unsafe {
-            crate::rhi::util::read_into_vec(|count, data| {
-                (surface_fns.get_physical_device_surface_formats_khr)(
-                    physical_device.handle(),
-                    surface.handle(),
-                    count,
-                    data,
-                )
-            })?
+            khr_surface_instance
+                .get_physical_device_surface_formats(physical_device.handle(), surface.handle())?
         };
 
         // Query present modes
         let present_modes = unsafe {
-            crate::rhi::util::read_into_vec(|count, data| {
-                (surface_fns.get_physical_device_surface_present_modes_khr)(
-                    physical_device.handle(),
-                    surface.handle(),
-                    count,
-                    data,
-                )
-            })?
+            khr_surface_instance.get_physical_device_surface_present_modes(
+                physical_device.handle(),
+                surface.handle(),
+            )?
         };
 
         // Select surface format
-        let (format, color_space) = if let (Some(format), Some(color_space)) = 
-            (description.format, description.color_space) {
+        let (format, color_space) = if let (Some(format), Some(color_space)) =
+            (description.format, description.color_space)
+        {
             // Verify the requested format is supported
-            if !surface_formats.iter().any(|sf| sf.format == format && sf.color_space == color_space) {
-                return Err(SwapchainError::VulkanError(vk::Result::ERROR_FORMAT_NOT_SUPPORTED));
+            if !surface_formats
+                .iter()
+                .any(|sf| sf.format == format && sf.color_space == color_space)
+            {
+                return Err(SwapchainError::VulkanError(
+                    vk::Result::ERROR_FORMAT_NOT_SUPPORTED,
+                ));
             }
             (format, color_space)
         } else {
             // Pick the first available format
-            let surface_format = surface_formats.first()
+            let surface_format = surface_formats
+                .first()
                 .ok_or(vk::Result::ERROR_FORMAT_NOT_SUPPORTED)?;
             (surface_format.format, surface_format.color_space)
         };
@@ -134,7 +129,9 @@ impl Swapchain {
         // Select present mode
         let present_mode = if let Some(mode) = description.present_mode {
             if !present_modes.contains(&mode) {
-                return Err(SwapchainError::VulkanError(vk::Result::ERROR_FEATURE_NOT_PRESENT));
+                return Err(SwapchainError::VulkanError(
+                    vk::Result::ERROR_FEATURE_NOT_PRESENT,
+                ));
             }
             mode
         } else {
@@ -193,28 +190,10 @@ impl Swapchain {
             .present_mode(present_mode)
             .clipped(true);
 
-        let swapchain_fns = device.fns().khr_swapchain().unwrap();
-        let mut swapchain_khr = vk::SwapchainKHR::null();
-        unsafe {
-            (swapchain_fns.create_swapchain_khr)(
-                device.handle(),
-                &create_info,
-                std::ptr::null(),
-                &mut swapchain_khr,
-            ).result()?;
-        }
+        let swapchain_khr = unsafe { khr_swapchain_device.create_swapchain(&create_info, None)? };
 
         // Get swapchain images
-        let images = unsafe {
-            crate::rhi::util::read_into_vec(|count, data| {
-                (swapchain_fns.get_swapchain_images_khr)(
-                    device.handle(),
-                    swapchain_khr,
-                    count,
-                    data,
-                )
-            })?
-        };
+        let images = unsafe { khr_swapchain_device.get_swapchain_images(swapchain_khr)? };
 
         Ok(Arc::new(Self {
             device,
@@ -269,77 +248,62 @@ impl Swapchain {
     }
 
     /// Acquire the next image from the swapchain.
-    /// 
+    ///
     /// Returns the index of the acquired image.
     pub fn acquire_next_image(
         &self,
         timeout: u64,
         semaphore: Option<vk::Semaphore>,
         fence: Option<vk::Fence>,
-    ) -> Result<(u32, bool), vk::Result> {
-        let swapchain_fns = self.device.fns().khr_swapchain().unwrap();
-        
-        let mut image_index = 0;
-        let result = unsafe {
-            (swapchain_fns.acquire_next_image_khr)(
-                self.device.handle(),
+    ) -> Result<(u32, bool), SwapchainError> {
+        let khr_swapchain_device = self
+            .device
+            .khr_swapchain_device()
+            .ok_or(SwapchainError::extension_not_enabled(khr::swapchain::NAME))?;
+
+        Ok(unsafe {
+            khr_swapchain_device.acquire_next_image(
                 self.swapchain,
                 timeout,
                 semaphore.unwrap_or(vk::Semaphore::null()),
                 fence.unwrap_or(vk::Fence::null()),
-                &mut image_index,
-            )
-        };
-
-        match result {
-            vk::Result::SUCCESS => Ok((image_index, false)),
-            vk::Result::SUBOPTIMAL_KHR => Ok((image_index, true)),
-            _ => Err(result),
-        }
+            )?
+        })
     }
 
     /// Present the swapchain image to the surface.
-    /// 
+    ///
     /// Returns true if the swapchain is suboptimal.
     pub fn queue_present(
         &self,
         queue: vk::Queue,
         image_index: u32,
         wait_semaphores: &[vk::Semaphore],
-    ) -> Result<bool, vk::Result> {
-        let swapchain_fns = self.device.fns().khr_swapchain().unwrap();
-        
+    ) -> Result<bool, SwapchainError> {
+        let khr_swapchain_device = self
+            .device
+            .khr_swapchain_device()
+            .ok_or(SwapchainError::extension_not_enabled(khr::swapchain::NAME))?;
+
         let swapchains = [self.swapchain];
         let image_indices = [image_index];
-        
+
         let present_info = vk::PresentInfoKHR::default()
             .wait_semaphores(wait_semaphores)
             .swapchains(&swapchains)
             .image_indices(&image_indices);
 
-        let result = unsafe {
-            (swapchain_fns.queue_present_khr)(queue, &present_info)
-        };
-
-        match result {
-            vk::Result::SUCCESS => Ok(false),
-            vk::Result::SUBOPTIMAL_KHR => Ok(true),
-            _ => Err(result),
-        }
+        Ok(unsafe { khr_swapchain_device.queue_present(queue, &present_info)? })
     }
 }
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
-        // SAFETY: khr_swapchain MUST be loaded, otherwise the swapchain would not have been created
-        let swapchain_fns = self.device.fns().khr_swapchain().unwrap();
-        
         unsafe {
-            (swapchain_fns.destroy_swapchain_khr)(
-                self.device.handle(),
-                self.swapchain,
-                std::ptr::null(),
-            );
+            self.device
+                .khr_swapchain_device()
+                .unwrap()
+                .destroy_swapchain(self.swapchain, None);
         }
     }
 }

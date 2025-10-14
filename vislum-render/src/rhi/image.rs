@@ -35,17 +35,7 @@ impl ImageView {
                 layer_count: 1,
             });
 
-        let mut image_view = vk::ImageView::null();
-        unsafe {
-            (device.fns().vk_1_0().create_image_view)(
-                device.handle(),
-                &create_info,
-                std::ptr::null(),
-                &mut image_view,
-            )
-            .result()
-            .unwrap();
-        }
+        let image_view = unsafe { device.handle().create_image_view(&create_info, None).unwrap() };
 
         Arc::new(Self { device, image_view })
     }
@@ -64,11 +54,7 @@ impl ImageView {
 impl Drop for ImageView {
     fn drop(&mut self) {
         unsafe {
-            (self.device.fns().vk_1_0().destroy_image_view)(
-                self.device.handle(),
-                self.image_view,
-                std::ptr::null(),
-            );
+            self.device.handle().destroy_image_view(self.image_view, None);
         }
     }
 }

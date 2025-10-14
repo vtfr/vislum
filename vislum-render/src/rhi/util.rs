@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use ash::{prelude::VkResult, vk};
+use ash::vk;
 
 #[macro_export]
 macro_rules! new_extensions_struct {
@@ -75,44 +75,20 @@ macro_rules! new_extensions_struct {
     };
 }
 
-/// Perform a two-pass call to a delegate to read into a vector.
-/// 
-/// First call reads the number of elements to allocate.
-/// Second call reads the elements into the vector.
-pub(in crate::rhi) unsafe fn read_into_vec<T, F>(mut delegate: F) -> ash::prelude::VkResult<Vec<T>> 
-where 
-    F: FnMut(*mut u32, *mut T) -> vk::Result,
-    T: Copy,
-{
-    let mut count = 0;
-
-    delegate(&mut count, std::ptr::null_mut())
-        .result()?;
-
-    let mut vec = Vec::with_capacity(count as usize);
-
-    // Defer processing the result until after the vector is set the appropriate length
-    let result = delegate(&mut count, vec.as_mut_ptr());
-
-    unsafe { vec.set_len(count as usize); }
-
-    result.result().map(|_| vec)
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Version {
+pub struct VkVersion {
     pub major: u32,
     pub minor: u32,
     pub patch: u32,
 }
 
-impl Display for Version {
+impl Display for VkVersion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
     }
 }
 
-impl Version {
+impl VkVersion {
     pub const VERSION_1_0: Self = Self::new(1, 0, 0);
     pub const VERSION_1_1: Self = Self::new(1, 1, 0);
     pub const VERSION_1_2: Self = Self::new(1, 2, 0);

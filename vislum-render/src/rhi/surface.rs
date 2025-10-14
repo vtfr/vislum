@@ -13,7 +13,9 @@ pub struct Surface {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SurfaceError {
-    #[error("unsupported surface type: only Wayland, Xlib, XCB, and Win32 are supported (what fucking underground windowing system are you using?)")]
+    #[error(
+        "unsupported surface type: only Wayland, Xlib, XCB, and Win32 are supported (what fucking underground windowing system are you using?)"
+    )]
     UnsupportedSurfaceType,
     #[error("required surface extension not enabled: {0}")]
     ExtensionNotEnabled(&'static str),
@@ -35,11 +37,17 @@ impl Surface {
         instance: Arc<Instance>,
         window: &winit::window::Window,
     ) -> Result<Arc<Self>, SurfaceError> {
-        use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
-        
+        use winit::raw_window_handle::{
+            HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
+        };
+
+        if instance.khr_surface_instance().is_none() {
+            return Err(SurfaceError::extension_not_enabled(khr::surface::NAME));
+        }
+
         let display_handle = window.display_handle().unwrap();
         let window_handle = window.window_handle().unwrap();
-        
+
         let surface = unsafe {
             match (display_handle.as_raw(), window_handle.as_raw()) {
                 #[cfg(target_os = "linux")]
@@ -61,11 +69,8 @@ impl Surface {
                 (_, _) => return Err(SurfaceError::UnsupportedSurfaceType),
             }
         };
-        
-        Ok(Arc::new(Self {
-            instance,
-            surface,
-        }))
+
+        Ok(Arc::new(Self { instance, surface }))
     }
 
     #[cfg(target_os = "linux")]
@@ -74,29 +79,22 @@ impl Surface {
         display: winit::raw_window_handle::WaylandDisplayHandle,
         window: winit::raw_window_handle::WaylandWindowHandle,
     ) -> Result<vk::SurfaceKHR, SurfaceError> {
-        use crate::rhi::instance::load_fn_for;
-
         if !instance.extensions().khr_wayland_surface {
-            return Err(SurfaceError::extension_not_enabled(khr::wayland_surface::NAME));
+            return Err(SurfaceError::extension_not_enabled(
+                khr::wayland_surface::NAME,
+            ));
         }
 
-        let mut load_fn = load_fn_for(instance.entry(), instance.vk_instance());
-        let fns = khr::wayland_surface::InstanceFn::load(&mut load_fn);
-        
+        let loader = khr::wayland_surface::Instance::new(instance.entry(), instance.instance());
+
         let create_info = vk::WaylandSurfaceCreateInfoKHR::default()
             .display(display.display.as_ptr())
             .surface(window.surface.as_ptr());
-        
-        let mut surface_khr = vk::SurfaceKHR::null();
-        unsafe {
-            (fns.create_wayland_surface_khr)(
-                instance.vk_instance(),
-                &create_info,
-                std::ptr::null(),
-                &mut surface_khr,
-            ).result().unwrap();
-        }
-        
+
+        let surface_khr = unsafe {
+            loader.create_wayland_surface(&create_info, None).unwrap()
+        };
+
         Ok(surface_khr)
     }
 
@@ -106,29 +104,20 @@ impl Surface {
         display: winit::raw_window_handle::XlibDisplayHandle,
         window: winit::raw_window_handle::XlibWindowHandle,
     ) -> Result<vk::SurfaceKHR, SurfaceError> {
-        use crate::rhi::instance::load_fn_for;
-
         if !instance.extensions().khr_xlib_surface {
             return Err(SurfaceError::extension_not_enabled(khr::xlib_surface::NAME));
         }
 
-        let mut load_fn = load_fn_for(instance.entry(), instance.vk_instance());
-        let fns = khr::xlib_surface::InstanceFn::load(&mut load_fn);
-        
+        let loader = khr::xlib_surface::Instance::new(instance.entry(), instance.instance());
+
         let create_info = vk::XlibSurfaceCreateInfoKHR::default()
             .dpy(display.display.unwrap().as_ptr() as *mut _)
             .window(window.window);
-        
-        let mut surface_khr = vk::SurfaceKHR::null();
-        unsafe {
-            (fns.create_xlib_surface_khr)(
-                instance.vk_instance(),
-                &create_info,
-                std::ptr::null(),
-                &mut surface_khr,
-            ).result().unwrap();
-        }
-        
+
+        let surface_khr = unsafe {
+            loader.create_xlib_surface(&create_info, None).unwrap()
+        };
+
         Ok(surface_khr)
     }
 
@@ -138,29 +127,18 @@ impl Surface {
         display: winit::raw_window_handle::XcbDisplayHandle,
         window: winit::raw_window_handle::XcbWindowHandle,
     ) -> Result<vk::SurfaceKHR, SurfaceError> {
-        use crate::rhi::instance::load_fn_for;
-
         if !instance.extensions().khr_xcb_surface {
             return Err(SurfaceError::extension_not_enabled(khr::xcb_surface::NAME));
         }
 
-        let mut load_fn = load_fn_for(instance.entry(), instance.vk_instance());
-        let fns = khr::xcb_surface::InstanceFn::load(&mut load_fn);
-        
+        let loader = khr::xcb_surface::Instance::new(instance.entry(), instance.instance());
+
         let create_info = vk::XcbSurfaceCreateInfoKHR::default()
             .connection(display.connection.unwrap().as_ptr())
             .window(window.window.get());
-        
-        let mut surface_khr = vk::SurfaceKHR::null();
-        unsafe {
-            (fns.create_xcb_surface_khr)(
-                instance.vk_instance(),
-                &create_info,
-                std::ptr::null(),
-                &mut surface_khr,
-            ).result().unwrap();
-        }
-        
+
+        let surface_khr = unsafe { loader.create_xcb_surface(&create_info, None).unwrap() };
+
         Ok(surface_khr)
     }
 
@@ -169,29 +147,22 @@ impl Surface {
         instance: &Arc<Instance>,
         window: winit::raw_window_handle::Win32WindowHandle,
     ) -> Result<vk::SurfaceKHR, SurfaceError> {
-        use crate::rhi::instance::load_fn_for;
-
         if !instance.extensions().khr_win32_surface {
-            return Err(SurfaceError::extension_not_enabled(khr::win32_surface::NAME));
+            return Err(SurfaceError::extension_not_enabled(
+                khr::win32_surface::NAME,
+            ));
         }
 
-        let mut load_fn = load_fn_for(instance.entry(), instance.vk_instance());
-        let fns = khr::win32_surface::InstanceFn::load(&mut load_fn);
-        
+        let loader = khr::win32_surface::Instance::new(instance.entry(), instance.instance());
+
         let create_info = vk::Win32SurfaceCreateInfoKHR::default()
             .hinstance(window.hinstance.unwrap().get() as *const _)
             .hwnd(window.hwnd.get() as *const _);
-        
-        let mut surface_khr = vk::SurfaceKHR::null();
-        unsafe {
-            (fns.create_win32_surface_khr)(
-                instance.vk_instance(),
-                &create_info,
-                std::ptr::null(),
-                &mut surface_khr,
-            ).result().unwrap();
-        }
-        
+
+        let surface_khr = unsafe {
+            loader.create_win32_surface(&create_info, None).unwrap()
+        };
+
         Ok(surface_khr)
     }
 
@@ -199,7 +170,7 @@ impl Surface {
     pub fn handle(&self) -> vk::SurfaceKHR {
         self.surface
     }
-    
+
     #[inline]
     pub fn instance(&self) -> &Arc<Instance> {
         &self.instance
@@ -209,10 +180,10 @@ impl Surface {
 impl Drop for Surface {
     fn drop(&mut self) {
         // SAFETY: khr_surface MUST be loaded, otherwise the surface would not have been created
-        let fns = self.instance.fns().khr_surface().unwrap();
-        
+        let khr_surface_instance = self.instance.khr_surface_instance().unwrap();
+
         unsafe {
-            (fns.destroy_surface_khr)(self.instance.vk_instance(), self.surface, std::ptr::null());
+            khr_surface_instance.destroy_surface(self.surface, None);
         }
     }
 }
