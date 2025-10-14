@@ -16,6 +16,13 @@ new_extensions_struct! {
         khr_synchronization2 => khr::synchronization2::NAME,
         khr_dynamic_rendering => khr::dynamic_rendering::NAME,
         khr_push_descriptor => khr::push_descriptor::NAME,
+        ext_extended_dynamic_state => ash::ext::extended_dynamic_state::NAME,
+        ext_extended_dynamic_state2 => ash::ext::extended_dynamic_state2::NAME,
+        ext_extended_dynamic_state3 => ash::ext::extended_dynamic_state3::NAME,
+        khr_acceleration_structure => khr::acceleration_structure::NAME,
+        khr_ray_tracing_pipeline => khr::ray_tracing_pipeline::NAME,
+        khr_ray_query => khr::ray_query::NAME,
+        khr_deferred_host_operations => khr::deferred_host_operations::NAME
     }
 }
 
@@ -86,6 +93,7 @@ device_features_impl! {
     pub struct DeviceFeatures {
         pub dynamic_rendering: bool,
         pub synchronization2: bool,
+        pub extended_dynamic_state: bool,
     }
 }
 
@@ -183,12 +191,7 @@ impl PhysicalDevice {
         physical_device: vk::PhysicalDevice,
         extensions: &DeviceExtensions,
     ) -> DeviceFeatures {
-        let fns = instance.fns();
-        let get_physical_device_features2 = match fns.khr_get_physical_device_properties2() {
-            Some(fns) => fns.get_physical_device_features2_khr,
-            None => fns.vk_1_1().get_physical_device_features2,
-        };
-
+        // Prepare chain of features.
         let mut vk_vulkan_1_1_features = vk::PhysicalDeviceVulkan11Features::default();
         let mut vk_vulkan_1_2_features = vk::PhysicalDeviceVulkan12Features::default();
         let mut vk_vulkan_1_3_features = vk::PhysicalDeviceVulkan13Features::default();
@@ -196,26 +199,42 @@ impl PhysicalDevice {
             vk::PhysicalDeviceSynchronization2Features::default();
         let mut vk_khr_dynamic_rendering_features =
             vk::PhysicalDeviceDynamicRenderingFeatures::default();
+        let mut vk_ext_extended_dynamic_state_features =
+            vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT::default();
 
         let mut vk_features = vk::PhysicalDeviceFeatures2::default()
             .push_next(&mut vk_vulkan_1_1_features)
             .push_next(&mut vk_vulkan_1_2_features)
             .push_next(&mut vk_vulkan_1_3_features)
             .push_next(&mut vk_khr_synchronization2_features)
-            .push_next(&mut vk_khr_dynamic_rendering_features);
+            .push_next(&mut vk_khr_dynamic_rendering_features)
+            .push_next(&mut vk_ext_extended_dynamic_state_features);
 
+        // Resolve function pointer for getting features.
+        let fns = instance.fns();
+        let get_physical_device_features2 = match fns.khr_get_physical_device_properties2() {
+            Some(fns) => fns.get_physical_device_features2_khr,
+            None => fns.vk_1_1().get_physical_device_features2,
+        };
+
+        // Get features.
         unsafe {
             (get_physical_device_features2)(physical_device, &mut vk_features);
         }
 
-        let mut features = DeviceFeatures::default();
-        features.dynamic_rendering = vk_vulkan_1_3_features.dynamic_rendering == vk::TRUE
-            || (extensions.khr_dynamic_rendering
-                && vk_khr_dynamic_rendering_features.dynamic_rendering == vk::TRUE);
-        features.synchronization2 = vk_vulkan_1_3_features.synchronization2 == vk::TRUE
-            || (extensions.khr_synchronization2
-                && vk_khr_synchronization2_features.synchronization2 == vk::TRUE);
-        features
+        DeviceFeatures {
+            // Dynamic rendering. Promoted in Vulkan 1.3 or extension.
+            dynamic_rendering: vk_vulkan_1_3_features.dynamic_rendering == vk::TRUE
+                || (extensions.khr_dynamic_rendering
+                    && vk_khr_dynamic_rendering_features.dynamic_rendering == vk::TRUE),
+            // Synchronization2. Promoted in Vulkan 1.3 or extension.
+            synchronization2: vk_vulkan_1_3_features.synchronization2 == vk::TRUE
+                || (extensions.khr_synchronization2
+                    && vk_khr_synchronization2_features.synchronization2 == vk::TRUE),
+            // Extended dynamic state. Promoted in Vulkan 1.3.
+            extended_dynamic_state: vk_ext_extended_dynamic_state_features.extended_dynamic_state
+                == vk::TRUE,
+        }
     }
 
     fn enumerate_supported_extensions(
@@ -263,6 +282,7 @@ pub struct DeviceFns {
     pub(crate) khr_synchronization2: Option<khr::synchronization2::DeviceFn>,
     pub(crate) khr_dynamic_rendering: Option<khr::dynamic_rendering::DeviceFn>,
     pub(crate) khr_swapchain: Option<khr::swapchain::DeviceFn>,
+    pub(crate) ext_extended_dynamic_state: Option<ash::ext::extended_dynamic_state::DeviceFn>,
 }
 
 impl std::fmt::Debug for DeviceFns {
@@ -301,6 +321,13 @@ impl DeviceFns {
     pub fn khr_dynamic_rendering(&self) -> Option<&khr::dynamic_rendering::DeviceFn> {
         self.khr_dynamic_rendering.as_ref()
     }
+
+    #[inline]
+    pub fn ext_extended_dynamic_state(
+        &self,
+    ) -> Option<&ash::ext::extended_dynamic_state::DeviceFn> {
+        self.ext_extended_dynamic_state.as_ref()
+    }
 }
 
 #[derive(Debug)]
@@ -319,10 +346,11 @@ pub struct DeviceDescription {
 }
 
 impl Device {
-    pub fn new(
-        device_description: DeviceDescription,
-    ) -> Result<Arc<Self>, DeviceError> {
-        Self::check_extension_compatibility(&device_description.physical_device, &device_description)?;
+    pub fn new(device_description: DeviceDescription) -> Result<Arc<Self>, DeviceError> {
+        Self::check_extension_compatibility(
+            &device_description.physical_device,
+            &device_description,
+        )?;
 
         let physical_device = device_description.physical_device;
         let instance = Arc::clone(&physical_device.instance);
@@ -350,6 +378,8 @@ impl Device {
             None::<vk::PhysicalDeviceSynchronization2Features>;
         let mut vk_khr_dynamic_rendering_features =
             None::<vk::PhysicalDeviceDynamicRenderingFeatures>;
+        let mut vk_ext_extended_dynamic_state_features =
+            None::<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>;
 
         // Add features promoted to Vulkan 1.1
         if physical_device.version() >= Version::VERSION_1_1 {
@@ -365,12 +395,21 @@ impl Device {
 
         // Add features promoted to Vulkan 1.3
         if physical_device.version() >= Version::VERSION_1_3 {
-            let next = vk_vulkan_1_3_features.insert(
-                vk::PhysicalDeviceVulkan13Features::default()
-                    .synchronization2(device_description.features.synchronization2)
-                    .dynamic_rendering(device_description.features.dynamic_rendering),
+            vk_create_info = vk_create_info.push_next(
+                vk_vulkan_1_3_features.insert(
+                    vk::PhysicalDeviceVulkan13Features::default()
+                        .synchronization2(device_description.features.synchronization2)
+                        .dynamic_rendering(device_description.features.dynamic_rendering),
+                ),
             );
-            vk_create_info = vk_create_info.push_next(next);
+
+            // Add extended dynamic state feature. Supported in Vulkan 1.3.
+            vk_create_info = vk_create_info.push_next(
+                vk_ext_extended_dynamic_state_features.insert(
+                    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT::default()
+                        .extended_dynamic_state(device_description.features.extended_dynamic_state),
+                ),
+            );
         } else {
             // Add synchronization2 feature from extension if supported
             if device_description.extensions.khr_synchronization2 {
@@ -391,22 +430,31 @@ impl Device {
 
                 vk_create_info = vk_create_info.push_next(next);
             }
+
+            // Add extended dynamic state feature.
+            if device_description.features.extended_dynamic_state {
+                let next = vk_ext_extended_dynamic_state_features.insert(
+                    vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT::default()
+                        .extended_dynamic_state(device_description.features.extended_dynamic_state),
+                );
+
+                vk_create_info = vk_create_info.push_next(next);
+            }
         }
 
         let handle = {
-            let mut handle = MaybeUninit::uninit();
-            let result = unsafe {
+            let mut handle = vk::Device::null();
+
+            unsafe {
                 (instance.fns().vk_1_0().create_device)(
                     physical_device.handle(),
                     &vk_create_info,
                     std::ptr::null(),
-                    handle.as_mut_ptr(),
-                )
+                    &mut handle,
+                ).result().unwrap();
             };
-            result.result().unwrap();
 
-            // SAFETY: The device is created successfully.
-            unsafe { handle.assume_init() }
+            handle
         };
 
         let device_fns = {
@@ -430,6 +478,10 @@ impl Device {
                     .then(|| khr::dynamic_rendering::DeviceFn::load(&mut load_fn)),
                 khr_swapchain: (device_description.extensions.khr_swapchain)
                     .then(|| khr::swapchain::DeviceFn::load(&mut load_fn)),
+                ext_extended_dynamic_state: (device_description
+                    .extensions
+                    .ext_extended_dynamic_state)
+                    .then(|| ash::ext::extended_dynamic_state::DeviceFn::load(&mut load_fn)),
             }
         };
 
@@ -474,7 +526,7 @@ impl Device {
         let missing_extensions = physical_device
             .supported_extensions()
             .difference(&device_description.extensions);
-        
+
         if !missing_extensions.is_empty() {
             return Err(DeviceError::MissingExtensions(missing_extensions));
         }

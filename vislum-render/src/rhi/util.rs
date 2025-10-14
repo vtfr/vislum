@@ -65,15 +65,11 @@ macro_rules! new_extensions_struct {
 
             #[doc = concat!("Compares with another [`", stringify!($ident), "`] and returns the missing extensions.")]
             pub fn difference(&self, other: &Self) -> Self {
-                let mut difference = Self::default();
-                
-                $(
-                    if other.$field && !self.$field {
-                        difference.$field = true;
-                    }
-                )*
-
-                difference
+                Self {
+                    $(
+                        $field: other.$field && !self.$field,
+                    )*
+                }
             }
         }
     };
