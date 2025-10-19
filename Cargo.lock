@@ -3337,6 +3337,7 @@ dependencies = [
  "ash-window",
  "log",
  "raw-window-handle",
+ "smallvec",
  "static_assertions",
  "thiserror 2.0.16",
  "winit",

@@ -60,13 +60,13 @@ pub struct Instance {
     /// The KHR_get_physical_device_properties2 instance extension.
     ///
     /// Loaded for non Vulkan 1.1 instances.
-    khr_get_physical_device_properties2_instance:
+    khr_get_physical_device_properties2_handle:
         Option<khr::get_physical_device_properties2::Instance>,
 
     /// The KHR_surface instance extension.
     ///
     /// Used for rendering to surfaces (i.e. windows).
-    khr_surface_instance: Option<khr::surface::Instance>,
+    khr_surface_handle: Option<khr::surface::Instance>,
 
     /// The version of the instance.
     version: Version,
@@ -143,11 +143,12 @@ impl Instance {
 
         let instance = unsafe { entry.create_instance(&create_info, None) }.unwrap();
 
-        let khr_get_physical_device_properties2_loader = description
+        let khr_get_physical_device_properties2_handle = description
             .extensions
             .khr_get_physical_device_properties2
             .then(|| khr::get_physical_device_properties2::Instance::new(&entry, &instance));
-        let khr_surface_loader = description
+
+        let khr_surface_handle = description
             .extensions
             .khr_surface
             .then(|| khr::surface::Instance::new(&entry, &instance));
@@ -155,8 +156,8 @@ impl Instance {
         Ok(Arc::new(Self {
             entry,
             instance,
-            khr_get_physical_device_properties2_instance: khr_get_physical_device_properties2_loader,
-            khr_surface_instance: khr_surface_loader,
+            khr_get_physical_device_properties2_handle,
+            khr_surface_handle,
             version: instance_version,
             extensions: description.extensions,
         }))
@@ -168,7 +169,7 @@ impl Instance {
     }
 
     #[inline]
-    pub fn vk(&self) -> &ash::Instance {
+    pub fn handle(&self) -> &ash::Instance {
         &self.instance
     }
 
@@ -177,16 +178,16 @@ impl Instance {
     /// When this object is [`Some`], callers should use methods provided by this instance,
     /// instead of those available on the [`ash::Instance`] returned by [`Instance::vk()`].
     #[inline]
-    pub fn khr_get_physical_device_properties2_instance(
+    pub fn khr_get_physical_device_properties2_handle(
         &self,
     ) -> Option<&khr::get_physical_device_properties2::Instance> {
-        self.khr_get_physical_device_properties2_instance.as_ref()
+        self.khr_get_physical_device_properties2_handle.as_ref()
     }
 
     /// The "KHR_surface" instance extension.
     #[inline]
-    pub fn khr_surface_instance(&self) -> Option<&khr::surface::Instance> {
-        self.khr_surface_instance.as_ref()
+    pub fn khr_surface_handle(&self) -> Option<&khr::surface::Instance> {
+        self.khr_surface_handle.as_ref()
     }
 
     #[inline]

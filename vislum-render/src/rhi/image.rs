@@ -35,7 +35,7 @@ impl ImageView {
                 layer_count: 1,
             });
 
-        let image_view = unsafe { device.vk().create_image_view(&create_info, None).unwrap() };
+        let image_view = unsafe { device.handle().create_image_view(&create_info, None).unwrap() };
 
         Self { device, image_view }
     }
@@ -54,7 +54,7 @@ impl ImageView {
 impl Drop for ImageView {
     fn drop(&mut self) {
         unsafe {
-            self.device.vk().destroy_image_view(self.image_view, None);
+            self.device.handle().destroy_image_view(self.image_view, None);
         }
     }
 }

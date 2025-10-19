@@ -16,7 +16,7 @@ impl Semaphore {
 
         let semaphore = unsafe {
             device
-                .vk()
+                .handle()
                 .create_semaphore(&create_info, None)
                 .unwrap()
         };
@@ -38,7 +38,7 @@ impl Semaphore {
 impl Drop for Semaphore {
     fn drop(&mut self) {
         unsafe {
-            self.device.vk().destroy_semaphore(self.semaphore, None);
+            self.device.handle().destroy_semaphore(self.semaphore, None);
         }
     }
 }
@@ -63,13 +63,15 @@ impl Fence {
             flags |= vk::FenceCreateFlags::SIGNALED;
         }
 
-        let create_info = vk::FenceCreateInfo::default().flags(flags);
+        let create_info = vk::FenceCreateInfo::default()
+            .flags(flags);
 
-        let fence = unsafe { device.vk().create_fence(&create_info, None).unwrap() };
+        let fence = unsafe { device.handle().create_fence(&create_info, None).unwrap() };
 
         Self { device, fence }
     }
 
+    /// Returns the inner Fence handle.
     #[inline]
     pub fn handle(&self) -> vk::Fence {
         self.fence
@@ -84,26 +86,34 @@ impl Fence {
     pub fn wait(&self, timeout: u64) {
         unsafe {
             self.device
-                .vk()
+                .handle()
                 .wait_for_fences(&[self.fence], true, timeout)
                 .unwrap();
         }
     }
 
     /// Reset the fence to unsignaled state
-    pub fn reset(&self) -> Result<(), vk::Result> {
+    pub fn reset(&self) {
         unsafe {
-            self.device.vk().reset_fences(&[self.fence]).unwrap();
+            self.device.handle()
+                .reset_fences(&[self.fence])
+                .unwrap();
         }
+    }
 
-        Ok(())
+    /// Waits and resets the fence.
+    #[inline]
+    pub fn wait_and_reset(&self, timeout: u64) {
+        self.wait(timeout);
+        self.reset();
     }
 }
 
 impl Drop for Fence {
     fn drop(&mut self) {
         unsafe {
-            self.device.vk().destroy_fence(self.fence, None);
+            self.device.handle()
+                .destroy_fence(self.fence, None);
         }
     }
 }

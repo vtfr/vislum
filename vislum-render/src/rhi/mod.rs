@@ -7,6 +7,7 @@ pub mod swapchain;
 pub mod sync;
 pub mod command;
 pub mod image;
+pub mod queue;
 
 pub mod ash {
     pub use ash::{vk, khr};

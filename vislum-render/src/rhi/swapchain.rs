@@ -74,7 +74,7 @@ impl Swapchain {
         // Check that the swapchain extension is enabled
         let khr_surface_instance = device
             .instance()
-            .khr_surface_instance()
+            .khr_surface_handle()
             .ok_or(SwapchainError::extension_not_enabled(khr::surface::NAME))?;
         let khr_swapchain_device = device
             .khr_swapchain_device()

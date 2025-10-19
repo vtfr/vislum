@@ -41,7 +41,7 @@ impl Surface {
             HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
         };
 
-        if instance.khr_surface_instance().is_none() {
+        if instance.khr_surface_handle().is_none() {
             return Err(SurfaceError::extension_not_enabled(khr::surface::NAME));
         }
 
@@ -85,7 +85,7 @@ impl Surface {
             ));
         }
 
-        let loader = khr::wayland_surface::Instance::new(instance.entry(), instance.vk());
+        let loader = khr::wayland_surface::Instance::new(instance.entry(), instance.handle());
 
         let create_info = vk::WaylandSurfaceCreateInfoKHR::default()
             .display(display.display.as_ptr())
@@ -108,7 +108,7 @@ impl Surface {
             return Err(SurfaceError::extension_not_enabled(khr::xlib_surface::NAME));
         }
 
-        let loader = khr::xlib_surface::Instance::new(instance.entry(), instance.vk());
+        let loader = khr::xlib_surface::Instance::new(instance.entry(), instance.handle());
 
         let create_info = vk::XlibSurfaceCreateInfoKHR::default()
             .dpy(display.display.unwrap().as_ptr() as *mut _)
@@ -131,7 +131,7 @@ impl Surface {
             return Err(SurfaceError::extension_not_enabled(khr::xcb_surface::NAME));
         }
 
-        let loader = khr::xcb_surface::Instance::new(instance.entry(), instance.vk());
+        let loader = khr::xcb_surface::Instance::new(instance.entry(), instance.handle());
 
         let create_info = vk::XcbSurfaceCreateInfoKHR::default()
             .connection(display.connection.unwrap().as_ptr())
@@ -180,7 +180,7 @@ impl Surface {
 impl Drop for Surface {
     fn drop(&mut self) {
         // SAFETY: khr_surface MUST be loaded, otherwise the surface would not have been created
-        let khr_surface_instance = self.instance.khr_surface_instance().unwrap();
+        let khr_surface_instance = self.instance.khr_surface_handle().unwrap();
 
         unsafe {
             khr_surface_instance.destroy_surface(self.surface, None);

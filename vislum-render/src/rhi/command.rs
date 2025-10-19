@@ -26,7 +26,7 @@ impl CommandPool {
 
         let pool = unsafe {
             device
-                .vk()
+                .handle()
                 .create_command_pool(&create_info, None)
                 .unwrap()
         };
@@ -65,7 +65,7 @@ impl CommandPool {
             .command_buffer_count(count);
 
         let command_buffers = unsafe {
-            self.device.vk()
+            self.device.handle()
                 .allocate_command_buffers(&alloc_info)?
         };
 
@@ -82,7 +82,7 @@ impl CommandPool {
 impl Drop for CommandPool {
     fn drop(&mut self) {
         unsafe {
-            self.device.vk().destroy_command_pool(self.pool, None);
+            self.device.handle().destroy_command_pool(self.pool, None);
         }
     }
 }
@@ -115,7 +115,7 @@ impl CommandBuffer {
         unsafe {
             self.pool
                 .device()
-                .vk()
+                .handle()
                 .reset_command_buffer(self.buffer, flags)
                 .unwrap()
         }
@@ -128,7 +128,7 @@ impl CommandBuffer {
         unsafe {
             self.pool
                 .device()
-                .vk()
+                .handle()
                 .begin_command_buffer(self.buffer, &begin_info)
                 .unwrap()
         }
@@ -139,7 +139,7 @@ impl CommandBuffer {
         unsafe {
             self.pool
                 .device()
-                .vk()
+                .handle()
                 .end_command_buffer(self.buffer)
                 .unwrap()
         }
@@ -150,7 +150,7 @@ impl CommandBuffer {
         unsafe {
             self.pool
                 .device()
-                .vk()
+                .handle()
                 .cmd_bind_pipeline(self.buffer, bind_point, pipeline);
         }
     }
@@ -163,7 +163,7 @@ impl CommandBuffer {
         let first_instance = instances.start;
 
         unsafe {
-            self.pool.device().vk().cmd_draw(
+            self.pool.device().handle().cmd_draw(
                 self.buffer,
                 vertex_count,
                 instance_count,
@@ -179,7 +179,7 @@ impl CommandBuffer {
         unsafe {
             match device.khr_dynamic_rendering_device() {
                 Some(device) => device.cmd_begin_rendering(self.buffer, rendering_info),
-                None => device.vk().cmd_begin_rendering(self.buffer, rendering_info),
+                None => device.handle().cmd_begin_rendering(self.buffer, rendering_info),
             }
         }
     }
@@ -190,7 +190,7 @@ impl CommandBuffer {
         unsafe {
             match device.khr_dynamic_rendering_device() {
                 Some(device) => device.cmd_end_rendering(self.buffer),
-                None => device.vk().cmd_end_rendering(self.buffer),
+                None => device.handle().cmd_end_rendering(self.buffer),
             }
         }
     }
@@ -203,7 +203,7 @@ impl CommandBuffer {
         unsafe {
             match device.ext_extended_dynamic_state_device() {
                 Some(device) => device.cmd_set_cull_mode(self.buffer, cull_mode),
-                None => device.vk().cmd_set_cull_mode(self.buffer, cull_mode),
+                None => device.handle().cmd_set_cull_mode(self.buffer, cull_mode),
             }
         }
     }
@@ -214,7 +214,7 @@ impl CommandBuffer {
         unsafe {
             match device.ext_extended_dynamic_state_device() {
                 Some(device) => device.cmd_set_front_face(self.buffer, front_face),
-                None => device.vk().cmd_set_front_face(self.buffer, front_face),
+                None => device.handle().cmd_set_front_face(self.buffer, front_face),
             }
         }
     }
@@ -225,7 +225,7 @@ impl CommandBuffer {
         unsafe {
             match device.ext_extended_dynamic_state_device() {
                 Some(device) => device.cmd_set_primitive_topology(self.buffer, topology),
-                None => device.vk().cmd_set_primitive_topology(self.buffer, topology),
+                None => device.handle().cmd_set_primitive_topology(self.buffer, topology),
             }
         }
     }
@@ -236,7 +236,7 @@ impl CommandBuffer {
         unsafe {
             match device.ext_extended_dynamic_state_device() {
                 Some(device) => device.cmd_set_viewport_with_count(self.buffer, viewports),
-                None => device.vk().cmd_set_viewport_with_count(self.buffer, viewports),
+                None => device.handle().cmd_set_viewport_with_count(self.buffer, viewports),
             }
         }
     }
@@ -247,7 +247,7 @@ impl CommandBuffer {
         unsafe {
             match device.ext_extended_dynamic_state_device() {
                 Some(device) => device.cmd_set_scissor_with_count(self.buffer, scissors),
-                None => device.vk().cmd_set_scissor_with_count(self.buffer, scissors),
+                None => device.handle().cmd_set_scissor_with_count(self.buffer, scissors),
             }
         }
     }
@@ -258,7 +258,7 @@ impl CommandBuffer {
         unsafe {
             match device.ext_extended_dynamic_state_device() {
                 Some(device) => device.cmd_set_depth_test_enable(self.buffer, enable.into()),
-                None => device.vk().cmd_set_depth_test_enable(self.buffer, enable.into()),
+                None => device.handle().cmd_set_depth_test_enable(self.buffer, enable.into()),
             }
         }
     }
@@ -270,7 +270,7 @@ impl CommandBuffer {
         unsafe {
             match device.ext_extended_dynamic_state_device() {
                 Some(device) => device.cmd_set_depth_write_enable(self.buffer, enable.into()),
-                None => device.vk().cmd_set_depth_write_enable(self.buffer, enable.into()),
+                None => device.handle().cmd_set_depth_write_enable(self.buffer, enable.into()),
             }
         }
     }
@@ -281,7 +281,7 @@ impl CommandBuffer {
         unsafe {
             match device.ext_extended_dynamic_state_device() {
                 Some(device) => device.cmd_set_depth_compare_op(self.buffer, compare_op),
-                None => device.vk().cmd_set_depth_compare_op(self.buffer, compare_op),
+                None => device.handle().cmd_set_depth_compare_op(self.buffer, compare_op),
             }
         }
     }
@@ -292,7 +292,7 @@ impl CommandBuffer {
         unsafe {
             match device.ext_extended_dynamic_state_device() {
                 Some(device) => device.cmd_set_depth_bounds_test_enable(self.buffer, enable.into()),
-                None => device.vk().cmd_set_depth_bounds_test_enable(self.buffer, enable.into()),
+                None => device.handle().cmd_set_depth_bounds_test_enable(self.buffer, enable.into()),
             }
         }
     }
@@ -303,7 +303,7 @@ impl CommandBuffer {
         unsafe {
             match device.ext_extended_dynamic_state_device() {
                 Some(device) => device.cmd_set_stencil_test_enable(self.buffer, enable.into()),
-                None => device.vk().cmd_set_stencil_test_enable(self.buffer, enable.into()),
+                None => device.handle().cmd_set_stencil_test_enable(self.buffer, enable.into()),
             }
         }
     }
@@ -328,7 +328,7 @@ impl CommandBuffer {
                     depth_fail_op,
                     compare_op,
                 ),
-                None => device.vk().cmd_set_stencil_op(
+                None => device.handle().cmd_set_stencil_op(
                     self.buffer,
                     face_mask,
                     fail_op,

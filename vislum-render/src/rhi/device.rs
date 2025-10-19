@@ -152,12 +152,12 @@ impl PhysicalDevice {
         let mut vk_properties = vk::PhysicalDeviceProperties2::default();
 
         unsafe {
-            match instance.khr_get_physical_device_properties2_instance() {
+            match instance.khr_get_physical_device_properties2_handle() {
                 Some(instance) => {
                     instance.get_physical_device_properties2(physical_device, &mut vk_properties)
                 }
                 None => instance
-                    .vk()
+                    .handle()
                     .get_physical_device_properties2(physical_device, &mut vk_properties),
             }
         }
@@ -194,13 +194,13 @@ impl PhysicalDevice {
             .push_next(&mut vk_ext_extended_dynamic_state_features);
 
         // Get features.
-        match instance.khr_get_physical_device_properties2_instance() {
+        match instance.khr_get_physical_device_properties2_handle() {
             Some(instance) => unsafe {
                 instance.get_physical_device_features2(physical_device, &mut vk_features)
             },
             None => unsafe {
                 instance
-                    .vk()
+                    .handle()
                     .get_physical_device_features2(physical_device, &mut vk_features)
             },
         };
@@ -226,7 +226,7 @@ impl PhysicalDevice {
     ) -> DeviceExtensions {
         let extension_properties = unsafe {
             instance
-                .vk()
+                .handle()
                 .enumerate_device_extension_properties(physical_device)
                 .unwrap_or_default()
         };
@@ -375,21 +375,21 @@ impl Device {
 
         let device = unsafe {
             instance
-                .vk()
+                .handle()
                 .create_device(physical_device.handle(), &vk_create_info, None)
                 .unwrap()
         };
 
         let khr_synchronization2_device = (device_description.extensions.khr_synchronization2)
-            .then(|| khr::synchronization2::Device::new(instance.vk(), &device));
+            .then(|| khr::synchronization2::Device::new(instance.handle(), &device));
         let khr_dynamic_rendering_device = (device_description.extensions.khr_dynamic_rendering)
-            .then(|| khr::dynamic_rendering::Device::new(instance.vk(), &device));
+            .then(|| khr::dynamic_rendering::Device::new(instance.handle(), &device));
         let khr_swapchain_device = (device_description.extensions.khr_swapchain)
-            .then(|| khr::swapchain::Device::new(instance.vk(), &device));
+            .then(|| khr::swapchain::Device::new(instance.handle(), &device));
         let ext_extended_dynamic_state_device = (device_description
             .extensions
             .ext_extended_dynamic_state)
-            .then(|| ash::ext::extended_dynamic_state::Device::new(instance.vk(), &device));
+            .then(|| ash::ext::extended_dynamic_state::Device::new(instance.handle(), &device));
 
         Ok(Arc::new(Self {
             instance,
@@ -404,7 +404,7 @@ impl Device {
     }
 
     #[inline]
-    pub fn vk(&self) -> &ash::Device {
+    pub fn handle(&self) -> &ash::Device {
         &self.device
     }
 

@@ -6,9 +6,10 @@ use vislum_render::rhi::{
     device::{Device, DeviceDescription, DeviceExtensions, DeviceFeatures},
     image::ImageView,
     instance::{Instance, InstanceDescription, InstanceExtensions},
+    queue::{Queue, QueueDescription, SubmissionInfo},
     surface::Surface,
     swapchain::{Swapchain, SwapchainDescription},
-    sync::{Fence, FenceDescription, Semaphore},
+    sync::Semaphore,
 };
 use winit::{
     application::ApplicationHandler,
@@ -27,13 +28,12 @@ struct TriangleDemo {
     pipeline_layout: Option<ash::vk::PipelineLayout>,
     image_views: Vec<Arc<ImageView>>,
     command_pool: Option<Arc<CommandPool>>,
-    command_buffers: Vec<CommandBuffer>,
+    command_buffers: Vec<Arc<CommandBuffer>>,
     image_available_semaphore: Option<Arc<Semaphore>>,
     render_finished_semaphore: Option<Arc<Semaphore>>,
-    in_flight_fence: Option<Arc<Fence>>,
     vertex_shader_module: Option<ash::vk::ShaderModule>,
     fragment_shader_module: Option<ash::vk::ShaderModule>,
-    queue: ash::vk::Queue,
+    queue: Option<Queue>,
 }
 
 impl TriangleDemo {
@@ -66,10 +66,9 @@ impl TriangleDemo {
             command_buffers: Vec::new(),
             image_available_semaphore: None,
             render_finished_semaphore: None,
-            in_flight_fence: None,
             vertex_shader_module: None,
             fragment_shader_module: None,
-            queue: ash::vk::Queue::null(),
+            queue: None,
         }
     }
 
@@ -101,14 +100,19 @@ impl TriangleDemo {
         })
         .expect("Failed to create device");
 
-        // Get queue
-        let queue = unsafe {
-            device.vk().get_device_queue(0, 0)
-        };
-        self.queue = queue;
-
         log::info!("Device created successfully");
         self.device = Some(device);
+
+        // Create queue
+        let queue = Queue::new(
+            self.device.as_ref().unwrap().clone(),
+            QueueDescription {
+                queue_family_index: 0,
+                queue_index: 0,
+                max_in_flight_submissions: 2,
+            }
+        );
+        self.queue = Some(queue);
 
         // Create surface
         let window = self.window.as_ref().unwrap();
@@ -178,7 +182,7 @@ impl TriangleDemo {
             .code(&code_u32);
 
         unsafe {
-            device.vk()
+            device.handle()
                 .create_shader_module(&create_info, None)
                 .expect("Failed to create shader module")
         }
@@ -192,7 +196,7 @@ impl TriangleDemo {
         let layout_create_info = vk::PipelineLayoutCreateInfo::default();
 
         let pipeline_layout = unsafe {
-            device.vk()
+            device.handle()
                 .create_pipeline_layout(&layout_create_info, None)
                 .expect("Failed to create pipeline layout")
         };
@@ -277,7 +281,7 @@ impl TriangleDemo {
         let pipeline_infos = [pipeline_info];
         
         let pipelines = unsafe {
-            device.vk()
+            device.handle()
                 .create_graphics_pipelines(vk::PipelineCache::null(), &pipeline_infos, None)
                 .expect("Failed to create graphics pipeline")
         };
@@ -324,7 +328,7 @@ impl TriangleDemo {
             )
             .expect("Failed to allocate command buffers");
 
-        self.command_buffers = command_buffers;
+        self.command_buffers = command_buffers.into_iter().map(Arc::new).collect();
     }
 
     fn create_sync_objects(&mut self) {
@@ -336,21 +340,14 @@ impl TriangleDemo {
         self.render_finished_semaphore = Some(
             Arc::new(Semaphore::new(device.clone())),
         );
-        self.in_flight_fence = Some(
-            Arc::new(Fence::new(device.clone(), FenceDescription { signaled: true })),
-        );
     }
 
     fn render_frame(&mut self) {
-        let device = self.device.as_ref().unwrap();
+        let _device = self.device.as_ref().unwrap();
         let swapchain = self.swapchain.as_ref().unwrap();
-        let fence = self.in_flight_fence.as_ref().unwrap();
+        let queue = self.queue.as_mut().unwrap();
         let image_available = self.image_available_semaphore.as_ref().unwrap();
         let render_finished = self.render_finished_semaphore.as_ref().unwrap();
-
-        // Wait for previous frame
-        fence.wait(u64::MAX);
-        fence.reset();
 
         // Acquire next image
         let (image_index, _) = swapchain
@@ -416,28 +413,20 @@ impl TriangleDemo {
 
         command_buffer.end();
 
-        // Submit command buffer
-        let wait_semaphores = [image_available.handle()];
-        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-        let command_buffers_vk = [command_buffer.vk()];
-        let signal_semaphores = [render_finished.handle()];
+        // Submit command buffer using the queue RHI
+        let submission_info = SubmissionInfo {
+            command_buffers: vec![command_buffer.clone()],
+            wait_semaphores: vec![image_available.clone()],
+            wait_stages: vec![vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+            signal_semaphores: vec![render_finished.clone()],
+        };
 
-        let submit_info = vk::SubmitInfo::default()
-            .wait_semaphores(&wait_semaphores)
-            .wait_dst_stage_mask(&wait_stages)
-            .command_buffers(&command_buffers_vk)
-            .signal_semaphores(&signal_semaphores);
-
-        let submit_infos = [submit_info];
-        unsafe {
-            device.vk()
-                .queue_submit(self.queue, &submit_infos, fence.handle())
-                .expect("Failed to submit draw command buffer");
-        }
+        queue.submit(submission_info)
+            .expect("Failed to submit draw command buffer");
 
         // Present
         let _ = swapchain.queue_present(
-            self.queue,
+            queue.handle(),
             image_index,
             &[render_finished.handle()],
         );
@@ -447,26 +436,26 @@ impl TriangleDemo {
         let device = self.device.as_ref().unwrap();
 
         unsafe {
-            let _ = device.vk().device_wait_idle();
+            let _ = device.handle().device_wait_idle();
 
             // Sync objects, command pool, and image views are automatically cleaned up by Drop
 
             // Destroy pipeline
             if let Some(pipeline) = self.pipeline {
-                device.vk().destroy_pipeline(pipeline, None);
+                device.handle().destroy_pipeline(pipeline, None);
             }
 
             // Destroy pipeline layout
             if let Some(layout) = self.pipeline_layout {
-                device.vk().destroy_pipeline_layout(layout, None);
+                device.handle().destroy_pipeline_layout(layout, None);
             }
 
             // Destroy shader modules
             if let Some(module) = self.vertex_shader_module {
-                device.vk().destroy_shader_module(module, None);
+                device.handle().destroy_shader_module(module, None);
             }
             if let Some(module) = self.fragment_shader_module {
-                device.vk().destroy_shader_module(module, None);
+                device.handle().destroy_shader_module(module, None);
             }
         }
     }
