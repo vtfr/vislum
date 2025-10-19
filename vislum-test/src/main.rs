@@ -39,18 +39,18 @@ struct TriangleDemo {
 impl TriangleDemo {
     fn new() -> Self {
         // Create instance early
-    let instance = Instance::new(InstanceDescription {
-        extensions: InstanceExtensions {
-            khr_surface: true,
-            khr_wayland_surface: true,
-            ext_debug_utils: true,
-            khr_get_physical_device_properties2: true,
-            khr_get_surface_capabilities2: true,
-            ext_swapchain_colorspace: true,
-            khr_portability_enumeration: true,
-            ..Default::default()
-        },
-    })
+        let instance = Instance::new(InstanceDescription {
+            extensions: InstanceExtensions {
+                khr_surface: true,
+                khr_wayland_surface: true,
+                ext_debug_utils: true,
+                khr_get_physical_device_properties2: true,
+                khr_get_surface_capabilities2: true,
+                ext_swapchain_colorspace: true,
+                khr_portability_enumeration: true,
+                ..Default::default()
+            },
+        })
         .expect("Failed to create Vulkan instance");
 
         Self {
@@ -74,11 +74,14 @@ impl TriangleDemo {
 
     fn init_vulkan(&mut self) {
         let instance = self.instance.as_ref().unwrap();
-    let physical_devices = instance.enumerate_physical_devices();
-        
+        let physical_devices = instance.enumerate_physical_devices();
+
         log::info!("Found {} physical device(s)", physical_devices.len());
-    for (i, physical_device) in physical_devices.iter().enumerate() {
-            log::info!("Physical device {i}: {}", physical_device.supported_extensions());
+        for (i, physical_device) in physical_devices.iter().enumerate() {
+            log::info!(
+                "Physical device {i}: {}",
+                physical_device.supported_extensions()
+            );
         }
 
         // Create device
@@ -110,14 +113,13 @@ impl TriangleDemo {
                 queue_family_index: 0,
                 queue_index: 0,
                 max_in_flight_submissions: 2,
-            }
+            },
         );
         self.queue = Some(queue);
 
         // Create surface
         let window = self.window.as_ref().unwrap();
-        let surface = Surface::new(instance.clone(), window)
-            .expect("Failed to create surface");
+        let surface = Surface::new(instance.clone(), window).expect("Failed to create surface");
         self.surface = Some(Arc::new(surface));
 
         // Create swapchain
@@ -135,9 +137,12 @@ impl TriangleDemo {
             },
         )
         .expect("Failed to create swapchain");
-        
-        log::info!("Swapchain created: format={:?}, extent={:?}", 
-            swapchain.format(), swapchain.extent());
+
+        log::info!(
+            "Swapchain created: format={:?}, extent={:?}",
+            swapchain.format(),
+            swapchain.extent()
+        );
         self.swapchain = Some(Arc::new(swapchain));
 
         // Create shaders
@@ -171,18 +176,18 @@ impl TriangleDemo {
 
     fn create_shader_module(&self, code: &[u8]) -> ash::vk::ShaderModule {
         let device = self.device.as_ref().unwrap();
-        
+
         // Convert bytes to u32 words
         let code_u32: Vec<u32> = code
             .chunks_exact(4)
             .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
             .collect();
 
-        let create_info = vk::ShaderModuleCreateInfo::default()
-            .code(&code_u32);
+        let create_info = vk::ShaderModuleCreateInfo::default().code(&code_u32);
 
         unsafe {
-            device.handle()
+            device
+                .handle()
                 .create_shader_module(&create_info, None)
                 .expect("Failed to create shader module")
         }
@@ -196,7 +201,8 @@ impl TriangleDemo {
         let layout_create_info = vk::PipelineLayoutCreateInfo::default();
 
         let pipeline_layout = unsafe {
-            device.handle()
+            device
+                .handle()
                 .create_pipeline_layout(&layout_create_info, None)
                 .expect("Failed to create pipeline layout")
         };
@@ -204,7 +210,7 @@ impl TriangleDemo {
 
         // Shader stages
         let entry_point = std::ffi::CString::new("main").unwrap();
-        
+
         let vert_stage = vk::PipelineShaderStageCreateInfo::default()
             .stage(vk::ShaderStageFlags::VERTEX)
             .module(self.vertex_shader_module.unwrap())
@@ -221,8 +227,8 @@ impl TriangleDemo {
         let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::default();
 
         // Input assembly
-        let input_assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-            .primitive_restart_enable(false);
+        let input_assembly =
+            vk::PipelineInputAssemblyStateCreateInfo::default().primitive_restart_enable(false);
 
         // Viewport state - using dynamic state (count will be set at draw time)
         let viewport_state = vk::PipelineViewportStateCreateInfo::default();
@@ -258,8 +264,8 @@ impl TriangleDemo {
             vk::DynamicState::FRONT_FACE,
             vk::DynamicState::PRIMITIVE_TOPOLOGY,
         ];
-        let dynamic_state_info = vk::PipelineDynamicStateCreateInfo::default()
-            .dynamic_states(&dynamic_states);
+        let dynamic_state_info =
+            vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
 
         // Dynamic rendering info
         let color_attachment_formats = [swapchain.format()];
@@ -279,9 +285,10 @@ impl TriangleDemo {
             .push_next(&mut pipeline_rendering_info);
 
         let pipeline_infos = [pipeline_info];
-        
+
         let pipelines = unsafe {
-            device.handle()
+            device
+                .handle()
                 .create_graphics_pipelines(vk::PipelineCache::null(), &pipeline_infos, None)
                 .expect("Failed to create graphics pipeline")
         };
@@ -334,12 +341,8 @@ impl TriangleDemo {
     fn create_sync_objects(&mut self) {
         let device = self.device.as_ref().unwrap();
 
-        self.image_available_semaphore = Some(
-            Arc::new(Semaphore::new(device.clone())),
-        );
-        self.render_finished_semaphore = Some(
-            Arc::new(Semaphore::new(device.clone())),
-        );
+        self.image_available_semaphore = Some(Arc::new(Semaphore::new(device.clone())));
+        self.render_finished_semaphore = Some(Arc::new(Semaphore::new(device.clone())));
     }
 
     fn render_frame(&mut self) {
@@ -357,11 +360,9 @@ impl TriangleDemo {
         // Record command buffer
         let command_buffer = &self.command_buffers[image_index as usize];
 
-        command_buffer
-            .reset(vk::CommandBufferResetFlags::empty());
+        command_buffer.reset(vk::CommandBufferResetFlags::empty());
 
-        command_buffer
-            .begin(vk::CommandBufferUsageFlags::empty());
+        command_buffer.begin(vk::CommandBufferUsageFlags::empty());
 
         // Dynamic rendering
         let clear_value = vk::ClearValue {
@@ -389,7 +390,7 @@ impl TriangleDemo {
 
         command_buffer.begin_rendering(&rendering_info);
         command_buffer.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, self.pipeline.unwrap());
-        
+
         // Set dynamic state
         let viewport = vk::Viewport::default()
             .x(0.0)
@@ -401,13 +402,13 @@ impl TriangleDemo {
         let scissor = vk::Rect2D::default()
             .offset(vk::Offset2D { x: 0, y: 0 })
             .extent(swapchain.extent());
-        
+
         command_buffer.set_viewport_with_count(&[viewport]);
         command_buffer.set_scissor_with_count(&[scissor]);
         command_buffer.set_primitive_topology(vk::PrimitiveTopology::TRIANGLE_LIST);
         command_buffer.set_cull_mode(vk::CullModeFlags::BACK);
         command_buffer.set_front_face(vk::FrontFace::CLOCKWISE);
-        
+
         command_buffer.draw(0..3, 0..1);
         command_buffer.end_rendering();
 
@@ -421,15 +422,12 @@ impl TriangleDemo {
             signal_semaphores: vec![render_finished.clone()],
         };
 
-        queue.submit(submission_info)
+        queue
+            .submit(submission_info)
             .expect("Failed to submit draw command buffer");
 
         // Present
-        let _ = swapchain.queue_present(
-            queue.handle(),
-            image_index,
-            &[render_finished.handle()],
-        );
+        let _ = swapchain.queue_present(queue.handle(), image_index, &[render_finished.handle()]);
     }
 
     fn cleanup(&mut self) {
@@ -468,7 +466,8 @@ impl ApplicationHandler for TriangleDemo {
                 .with_title("Vislum Triangle Demo")
                 .with_inner_size(winit::dpi::LogicalSize::new(800, 600));
 
-            let window = event_loop.create_window(window_attributes)
+            let window = event_loop
+                .create_window(window_attributes)
                 .expect("Failed to create window");
 
             self.window = Some(Arc::new(window));
@@ -514,5 +513,7 @@ fn main() {
     let mut app = TriangleDemo::new();
 
     log::info!("Starting triangle demo");
-    event_loop.run_app(&mut app).expect("Failed to run event loop");
+    event_loop
+        .run_app(&mut app)
+        .expect("Failed to run event loop");
 }
