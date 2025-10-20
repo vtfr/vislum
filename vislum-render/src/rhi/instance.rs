@@ -5,14 +5,14 @@ use ash::{ext, khr, vk};
 use crate::{
     new_extensions_struct,
     rhi::{
-        debug::debug_trampoline,
-        device::{Device, DeviceDescription, DeviceError, PhysicalDevice},
+        device::{Device, DeviceDescription, DeviceError}, physical::PhysicalDevice,
+        surface::Surface,
         util::Version,
     },
 };
 
 new_extensions_struct! {
-    pub struct InstanceExtensions {
+    pub(in crate::rhi) struct InstanceExtensions {
         /// Surface support for presenting rendered images
         khr_surface => khr::surface::NAME,
 
@@ -92,7 +92,7 @@ pub enum InstanceError {
 }
 
 impl Instance {
-    pub fn new(description: InstanceDescription) -> Result<Arc<Self>, InstanceError> {
+    pub fn new() -> Result<Arc<Self>, InstanceError> {
         log::debug!("Loading Vulkan entrypoint");
         let entry = unsafe { ash::Entry::load() }.unwrap();
 
@@ -109,47 +109,42 @@ impl Instance {
         // Cap the version to 1.3.0
         let instance_version = instance_version.min(Version::VERSION_1_3);
 
+        // Prepare the required instance extensions.
+        let required_extensions = InstanceExtensions {
+            khr_get_physical_device_properties2: instance_version < Version::VERSION_1_1,
+            // Inclue the surface extensions for rendering to surfaces (i.e. windows).
+            ..Surface::required_instance_extensions()
+        };
+
         let supported_instance_extensions = Self::enumerate_supported_extensions(&entry);
         log::debug!(
             "Instance supported extensions: {:?}",
             supported_instance_extensions
         );
 
-        let missing_extensions = supported_instance_extensions.difference(&description.extensions);
+        let missing_extensions = supported_instance_extensions.difference(&required_extensions);
         if !missing_extensions.is_empty() {
             return Err(InstanceError::MissingExtensions(missing_extensions));
         }
 
-        let extension_names = description
-            .extensions
+        let extension_names = required_extensions
             .to_vk_extension_names()
             .map(|name| name.as_ptr())
             .collect::<Vec<_>>();
 
         let application_info = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_3);
 
-        let mut create_info = vk::InstanceCreateInfo::default()
+        let create_info = vk::InstanceCreateInfo::default()
             .application_info(&application_info)
             .enabled_extension_names(&*extension_names);
 
-        let mut debug_utils_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
-        if description.extensions.ext_debug_utils {
-            debug_utils_create_info.message_severity =
-                vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE;
-            debug_utils_create_info.message_type = vk::DebugUtilsMessageTypeFlagsEXT::GENERAL;
-            debug_utils_create_info.pfn_user_callback = Some(debug_trampoline);
-            create_info = create_info.push_next(&mut debug_utils_create_info);
-        }
-
         let instance = unsafe { entry.create_instance(&create_info, None) }.unwrap();
 
-        let khr_get_physical_device_properties2_handle = description
-            .extensions
+        let khr_get_physical_device_properties2_handle = required_extensions
             .khr_get_physical_device_properties2
             .then(|| khr::get_physical_device_properties2::Instance::new(&entry, &instance));
 
-        let khr_surface_handle = description
-            .extensions
+        let khr_surface_handle = required_extensions
             .khr_surface
             .then(|| khr::surface::Instance::new(&entry, &instance));
 
@@ -159,26 +154,26 @@ impl Instance {
             khr_get_physical_device_properties2_handle,
             khr_surface_handle,
             version: instance_version,
-            extensions: description.extensions,
+            extensions: required_extensions,
         }))
     }
 
     #[inline]
-    pub fn entry(&self) -> &ash::Entry {
+    pub(in crate::rhi) fn entry(&self) -> &ash::Entry {
         &self.entry
     }
 
     #[inline]
-    pub fn handle(&self) -> &ash::Instance {
+    pub(in crate::rhi) fn handle(&self) -> &ash::Instance {
         &self.instance
     }
 
     /// The "KHR_get_physical_device_properties2" instance extension.
     ///
     /// When this object is [`Some`], callers should use methods provided by this instance,
-    /// instead of those available on the [`ash::Instance`] returned by [`Instance::vk()`].
+    /// instead of those available on the [`ash::Instance`] returned by [`Instance::handle()`].
     #[inline]
-    pub fn khr_get_physical_device_properties2_handle(
+    pub(in crate::rhi) fn khr_get_physical_device_properties2_handle(
         &self,
     ) -> Option<&khr::get_physical_device_properties2::Instance> {
         self.khr_get_physical_device_properties2_handle.as_ref()
@@ -186,17 +181,17 @@ impl Instance {
 
     /// The "KHR_surface" instance extension.
     #[inline]
-    pub fn khr_surface_handle(&self) -> Option<&khr::surface::Instance> {
+    pub(in crate::rhi) fn khr_surface_handle(&self) -> Option<&khr::surface::Instance> {
         self.khr_surface_handle.as_ref()
     }
 
     #[inline]
-    pub fn version(&self) -> Version {
+    pub(in crate::rhi) fn version(&self) -> Version {
         self.version
     }
 
     #[inline]
-    pub fn extensions(&self) -> &InstanceExtensions {
+    pub(in crate::rhi) fn extensions(&self) -> &InstanceExtensions {
         &self.extensions
     }
 
@@ -209,7 +204,7 @@ impl Instance {
         vk_physical_devices
             .into_iter()
             .filter_map(|vk_physical_device| {
-                PhysicalDevice::from_raw(Arc::clone(self), vk_physical_device)
+                PhysicalDevice::new(Arc::clone(self), vk_physical_device)
             })
             .collect()
     }
@@ -219,7 +214,7 @@ impl Instance {
         self: &Arc<Self>,
         device_description: DeviceDescription,
     ) -> Result<Arc<Device>, DeviceError> {
-        Device::new(device_description)
+        Device::new(Arc::clone(self), device_description)
     }
 
     /// Enumerate the supported extensions for the instance.

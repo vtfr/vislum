@@ -4,10 +4,7 @@ use ash::{khr, vk};
 
 use crate::{
     new_extensions_struct,
-    rhi::{
-        instance::Instance,
-        util::Version,
-    },
+    rhi::{instance::Instance, physical::PhysicalDevice, util::Version},
 };
 
 new_extensions_struct! {
@@ -78,167 +75,6 @@ device_features_impl! {
     }
 }
 
-#[derive(Debug)]
-pub struct PhysicalDevice {
-    instance: Arc<Instance>,
-    physical_device: vk::PhysicalDevice,
-    version: Version,
-    supported_device_extensions: DeviceExtensions,
-    supported_features: DeviceFeatures,
-}
-
-impl PhysicalDevice {
-    /// Create a new physical device from a handle.
-    ///
-    /// Returns `None` if the physical device does not meet the minimum requirements for rendering.
-    pub(crate) fn from_raw(
-        instance: Arc<Instance>,
-        physical_device: vk::PhysicalDevice,
-    ) -> Option<Arc<Self>> {
-        let version = Self::get_physical_device_version(&instance, physical_device);
-        let supported_device_extensions =
-            Self::enumerate_supported_extensions(&instance, physical_device);
-        let supported_features = Self::enumerate_supported_features(
-            &instance,
-            physical_device,
-            &supported_device_extensions,
-        );
-
-        // We expect the physical device to support dynamic rendering and synchronization2.
-        if !supported_features.dynamic_rendering || !supported_features.synchronization2 {
-            return None;
-        }
-
-        Some(Arc::new(Self {
-            instance,
-            physical_device,
-            version,
-            supported_device_extensions,
-            supported_features,
-        }))
-    }
-
-    #[inline]
-    pub fn handle(&self) -> vk::PhysicalDevice {
-        self.physical_device
-    }
-
-    #[inline]
-    pub fn supported_extensions(&self) -> &DeviceExtensions {
-        &self.supported_device_extensions
-    }
-
-    #[inline]
-    pub fn supported_features(&self) -> &DeviceFeatures {
-        &self.supported_features
-    }
-
-    /// The version of the physical device, capped to the instance version.
-    #[inline]
-    pub fn version(&self) -> Version {
-        self.version
-    }
-
-    #[inline]
-    pub fn instance(&self) -> &Arc<Instance> {
-        &self.instance
-    }
-
-    #[inline]
-    fn get_physical_device_version(
-        instance: &Arc<Instance>,
-        physical_device: vk::PhysicalDevice,
-    ) -> Version {
-        let mut vk_properties = vk::PhysicalDeviceProperties2::default();
-
-        unsafe {
-            match instance.khr_get_physical_device_properties2_handle() {
-                Some(instance) => {
-                    instance.get_physical_device_properties2(physical_device, &mut vk_properties)
-                }
-                None => instance
-                    .handle()
-                    .get_physical_device_properties2(physical_device, &mut vk_properties),
-            }
-        }
-
-        // Cap the version to the instance version
-        std::cmp::min(
-            instance.version(),
-            Version::from_vk(vk_properties.properties.api_version),
-        )
-    }
-
-    fn enumerate_supported_features(
-        instance: &Arc<Instance>,
-        physical_device: vk::PhysicalDevice,
-        extensions: &DeviceExtensions,
-    ) -> DeviceFeatures {
-        // Prepare chain of features.
-        let mut vk_vulkan_1_1_features = vk::PhysicalDeviceVulkan11Features::default();
-        let mut vk_vulkan_1_2_features = vk::PhysicalDeviceVulkan12Features::default();
-        let mut vk_vulkan_1_3_features = vk::PhysicalDeviceVulkan13Features::default();
-        let mut vk_khr_synchronization2_features =
-            vk::PhysicalDeviceSynchronization2Features::default();
-        let mut vk_khr_dynamic_rendering_features =
-            vk::PhysicalDeviceDynamicRenderingFeatures::default();
-        let mut vk_ext_extended_dynamic_state_features =
-            vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT::default();
-
-        let mut vk_features = vk::PhysicalDeviceFeatures2::default()
-            .push_next(&mut vk_vulkan_1_1_features)
-            .push_next(&mut vk_vulkan_1_2_features)
-            .push_next(&mut vk_vulkan_1_3_features)
-            .push_next(&mut vk_khr_synchronization2_features)
-            .push_next(&mut vk_khr_dynamic_rendering_features)
-            .push_next(&mut vk_ext_extended_dynamic_state_features);
-
-        // Get features.
-        match instance.khr_get_physical_device_properties2_handle() {
-            Some(instance) => unsafe {
-                instance.get_physical_device_features2(physical_device, &mut vk_features)
-            },
-            None => unsafe {
-                instance
-                    .handle()
-                    .get_physical_device_features2(physical_device, &mut vk_features)
-            },
-        };
-
-        DeviceFeatures {
-            // Dynamic rendering. Promoted in Vulkan 1.3 or extension.
-            dynamic_rendering: vk_vulkan_1_3_features.dynamic_rendering == vk::TRUE
-                || (extensions.khr_dynamic_rendering
-                    && vk_khr_dynamic_rendering_features.dynamic_rendering == vk::TRUE),
-            // Synchronization2. Promoted in Vulkan 1.3 or extension.
-            synchronization2: vk_vulkan_1_3_features.synchronization2 == vk::TRUE
-                || (extensions.khr_synchronization2
-                    && vk_khr_synchronization2_features.synchronization2 == vk::TRUE),
-            // Extended dynamic state. Promoted in Vulkan 1.3.
-            extended_dynamic_state: vk_ext_extended_dynamic_state_features.extended_dynamic_state
-                == vk::TRUE,
-        }
-    }
-
-    fn enumerate_supported_extensions(
-        instance: &Arc<Instance>,
-        physical_device: vk::PhysicalDevice,
-    ) -> DeviceExtensions {
-        let extension_properties = unsafe {
-            instance
-                .handle()
-                .enumerate_device_extension_properties(physical_device)
-                .unwrap_or_default()
-        };
-
-        let extension_names = extension_properties
-            .iter()
-            .map(|ext| ext.extension_name_as_c_str().unwrap());
-
-        DeviceExtensions::from_vk_extension_names(extension_names)
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum DeviceError {
     #[error("missing extensions: {0}")]
@@ -277,14 +113,16 @@ pub struct DeviceDescription {
 }
 
 impl Device {
-    pub fn new(device_description: DeviceDescription) -> Result<Arc<Self>, DeviceError> {
+    pub(in crate::rhi) fn new(
+        instance: Arc<Instance>,
+        device_description: DeviceDescription,
+    ) -> Result<Arc<Self>, DeviceError> {
         Self::check_extension_compatibility(
             &device_description.physical_device,
             &device_description,
         )?;
 
         let physical_device = device_description.physical_device;
-        let instance = Arc::clone(&physical_device.instance);
 
         let vk_queue_family_properties = [1.0f32];
         let vk_queue_create_infos = [vk::DeviceQueueCreateInfo::default()
@@ -386,10 +224,9 @@ impl Device {
             .then(|| khr::dynamic_rendering::Device::new(instance.handle(), &device));
         let khr_swapchain_device = (device_description.extensions.khr_swapchain)
             .then(|| khr::swapchain::Device::new(instance.handle(), &device));
-        let ext_extended_dynamic_state_device = (device_description
-            .extensions
-            .ext_extended_dynamic_state)
-            .then(|| ash::ext::extended_dynamic_state::Device::new(instance.handle(), &device));
+        let ext_extended_dynamic_state_device =
+            (device_description.extensions.ext_extended_dynamic_state)
+                .then(|| ash::ext::extended_dynamic_state::Device::new(instance.handle(), &device));
 
         Ok(Arc::new(Self {
             instance,
@@ -409,41 +246,32 @@ impl Device {
     }
 
     #[inline]
-    pub fn instance(&self) -> &Arc<Instance> {
-        &self.instance
-    }
-
-    #[inline]
-    pub fn physical_device(&self) -> &Arc<PhysicalDevice> {
-        &self.physical_device
-    }
-
-    #[inline]
-    pub fn khr_synchronization2_device(&self) -> Option<&khr::synchronization2::Device> {
+    pub(in crate::rhi) fn khr_synchronization2_device(
+        &self,
+    ) -> Option<&khr::synchronization2::Device> {
         self.khr_synchronization2_device.as_ref()
     }
 
     #[inline]
-    pub fn khr_dynamic_rendering_device(&self) -> Option<&khr::dynamic_rendering::Device> {
+    pub(in crate::rhi) fn khr_dynamic_rendering_device(
+        &self,
+    ) -> Option<&khr::dynamic_rendering::Device> {
         self.khr_dynamic_rendering_device.as_ref()
     }
 
     #[inline]
-    pub fn khr_swapchain_device(&self) -> Option<&khr::swapchain::Device> {
+    pub(in crate::rhi) fn khr_swapchain_device(&self) -> Option<&khr::swapchain::Device> {
         self.khr_swapchain_device.as_ref()
     }
 
     #[inline]
-    pub fn ext_extended_dynamic_state_device(&self) -> Option<&ash::ext::extended_dynamic_state::Device> {
+    pub(in crate::rhi) fn ext_extended_dynamic_state_device(
+        &self,
+    ) -> Option<&ash::ext::extended_dynamic_state::Device> {
         self.ext_extended_dynamic_state_device.as_ref()
     }
 
-    #[inline]
-    pub fn extensions(&self) -> &DeviceExtensions {
-        &self.enabled_extensions
-    }
-
-    fn check_extension_compatibility(
+    pub(in crate::rhi) fn check_extension_compatibility(
         physical_device: &Arc<PhysicalDevice>,
         device_description: &DeviceDescription,
     ) -> Result<(), DeviceError> {

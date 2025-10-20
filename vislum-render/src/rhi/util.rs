@@ -71,6 +71,15 @@ macro_rules! new_extensions_struct {
                     )*
                 }
             }
+
+            #[doc = concat!("Merges with another [`", stringify!($ident), "`] and returns the resulting extensions.")]
+            pub fn merge(&self, other: &Self) -> Self {
+                Self {
+                    $(
+                        $field: self.$field || other.$field,
+                    )*
+                }
+            }
         }
     };
 }
