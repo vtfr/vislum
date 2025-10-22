@@ -12,7 +12,7 @@ use crate::{
 };
 
 new_extensions_struct! {
-    pub(in crate::rhi) struct InstanceExtensions {
+    pub struct InstanceExtensions {
         /// Surface support for presenting rendered images
         khr_surface => khr::surface::NAME,
 
@@ -43,12 +43,6 @@ new_extensions_struct! {
         /// Required when running on macOS (MoltenVK)
         khr_portability_enumeration => khr::portability_enumeration::NAME,
     }
-}
-
-/// The description of the instance to create
-pub struct InstanceDescription {
-    /// The extensions to enable for the instance.
-    pub extensions: InstanceExtensions,
 }
 
 pub struct Instance {

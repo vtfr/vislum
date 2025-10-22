@@ -9,17 +9,18 @@ use crate::{
 
 new_extensions_struct! {
     pub struct DeviceExtensions {
-        khr_swapchain => khr::swapchain::NAME,
-        khr_synchronization2 => khr::synchronization2::NAME,
-        khr_dynamic_rendering => khr::dynamic_rendering::NAME,
-        khr_push_descriptor => khr::push_descriptor::NAME,
         ext_extended_dynamic_state => ash::ext::extended_dynamic_state::NAME,
         ext_extended_dynamic_state2 => ash::ext::extended_dynamic_state2::NAME,
         ext_extended_dynamic_state3 => ash::ext::extended_dynamic_state3::NAME,
         khr_acceleration_structure => khr::acceleration_structure::NAME,
-        khr_ray_tracing_pipeline => khr::ray_tracing_pipeline::NAME,
+        khr_buffer_device_address => khr::buffer_device_address::NAME,
+        khr_deferred_host_operations => khr::deferred_host_operations::NAME,
+        khr_dynamic_rendering => khr::dynamic_rendering::NAME,
+        khr_push_descriptor => khr::push_descriptor::NAME,
         khr_ray_query => khr::ray_query::NAME,
-        khr_deferred_host_operations => khr::deferred_host_operations::NAME
+        khr_ray_tracing_pipeline => khr::ray_tracing_pipeline::NAME,
+        khr_swapchain => khr::swapchain::NAME,
+        khr_synchronization2 => khr::synchronization2::NAME,
     }
 }
 

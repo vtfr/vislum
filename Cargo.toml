@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["vislum-player", "vislum-editor", "vislum-render", "vislum-asset", "vislum-runtime", "vislum-op", "vislum-system", "vislum-op-std", "vislum-math", "vislum-shader", "vislum-test"]
+members = ["vislum-player", "vislum-editor", "vislum-render", "vislum-asset", "vislum-runtime", "vislum-op", "vislum-system", "vislum-op-std", "vislum-math", "vislum-shader", "vislum-test", "vislum-dxc"]
 
 [workspace.dependencies]
 ash-window = "0.13"

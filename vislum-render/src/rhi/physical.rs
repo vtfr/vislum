@@ -9,6 +9,7 @@ use crate::rhi::{device::{DeviceExtensions, DeviceFeatures}, instance::Instance,
 pub struct PhysicalDevice {
     instance: Arc<Instance>,
     handle: ash::vk::PhysicalDevice,
+    name: String,
     version: Version,
     supported_extensions: DeviceExtensions,
     supported_features: DeviceFeatures,
@@ -22,7 +23,7 @@ impl PhysicalDevice {
         instance: Arc<Instance>,
         handle: vk::PhysicalDevice,
     ) -> Option<Arc<Self>> {
-        let version = Self::get_physical_device_version(&instance, handle);
+        let (name, version) = Self::get_physical_device_name_and_version(&instance, handle);
         let supported_device_extensions =
             Self::enumerate_supported_extensions(&instance, handle);
         let supported_features = Self::enumerate_supported_features(
@@ -39,6 +40,7 @@ impl PhysicalDevice {
         Some(Arc::new(Self {
             instance,
             handle,
+            name,
             version,
             supported_extensions: supported_device_extensions,
             supported_features,
@@ -51,26 +53,31 @@ impl PhysicalDevice {
     }
 
     #[inline]
-    pub(in crate::rhi) fn supported_extensions(&self) -> &DeviceExtensions {
+    pub fn supported_extensions(&self) -> &DeviceExtensions {
         &self.supported_extensions
     }
 
     #[inline]
-    pub(in crate::rhi) fn supported_features(&self) -> &DeviceFeatures {
+    pub fn supported_features(&self) -> &DeviceFeatures {
         &self.supported_features
     }
 
     /// The version of the physical device, capped to the instance version.
     #[inline]
-    pub(in crate::rhi) fn version(&self) -> Version {
+    pub fn version(&self) -> Version {
         self.version
     }
 
     #[inline]
-    fn get_physical_device_version(
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[inline]
+    fn get_physical_device_name_and_version(
         instance: &Arc<Instance>,
         handle: ash::vk::PhysicalDevice,
-    ) -> Version {
+    ) -> (String, Version) {
         let mut vk_properties = vk::PhysicalDeviceProperties2::default();
 
         unsafe {
@@ -84,11 +91,12 @@ impl PhysicalDevice {
             }
         }
 
-        // Cap the version to the instance version
-        std::cmp::min(
-            instance.version(),
-            Version::from_vk(vk_properties.properties.api_version),
-        )
+        let name = vk_properties.properties.device_name_as_c_str()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        (name, Version::from_vk(vk_properties.properties.api_version))
     }
 
     fn enumerate_supported_features(
