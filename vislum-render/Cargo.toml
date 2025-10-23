@@ -13,3 +13,4 @@ ash = "0.38.0"
 static_assertions.workspace = true
 anyhow = "1.0.99"
 smallvec = { workspace = true }
+bitflags = { workspace = true }

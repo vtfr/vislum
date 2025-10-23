@@ -3343,6 +3343,7 @@ dependencies = [
  "anyhow",
  "ash",
  "ash-window",
+ "bitflags 2.9.3",
  "log",
  "raw-window-handle",
  "smallvec",
