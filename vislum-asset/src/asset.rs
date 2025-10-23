@@ -1,61 +1,46 @@
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use downcast_rs::{DowncastSync};
+use downcast_rs::DowncastSync;
 
-use crate::fs::Bytes;
 use crate::loader::LoadError;
 use crate::path::AssetPath;
 
-pub trait Asset: Send + Sync + DowncastSync { }
+slotmap::new_key_type! {
+    /// A unique identifier for an asset.
+    pub struct AssetId;
+}
+pub trait Asset: Send + Sync + DowncastSync {}
 
 downcast_rs::impl_downcast!(sync Asset);
-pub(crate) enum InternalAssetEvent {
+pub enum InternalAssetEvent {
     /// An asset has been created.
     Created(AssetPath),
     /// An asset has been changed.
     Changed(AssetPath),
     /// An asset has been loaded.
-    Loaded(LoadedAssetEvent),
+    Loaded(LoadAssetCompletionEvent),
 }
 
 static_assertions::assert_impl_all!(InternalAssetEvent: Send, Sync);
 
-pub(crate) struct LoadedAssetEvent {
+/// Internal event for when an asset has finished loading.
+pub struct LoadAssetCompletionEvent {
+    /// The ID of the asset that was loaded.
+    pub id: AssetId,
+
+    /// The path of the asset that was requested to be loaded.
     pub path: AssetPath,
+
+    /// The resolved filesystem path of the asset that was loaded.
+    pub filesystem_path: Option<PathBuf>,
+
+    /// The result of the loading operation.
     pub result: Result<Arc<dyn Asset>, LoadError>,
+
+    /// The dependencies of the asset.
     pub dependencies: HashSet<AssetPath>,
 }
 
 static_assertions::assert_impl_all!(InternalAssetEvent: Send, Sync);
-
-/// A trait for assets that are embedded in the project.
-pub struct EmbeddedAsset {
-    path: AssetPath,
-    bytes: Bytes,
-}
-
-impl EmbeddedAsset {
-    pub const fn new(path: &'static str, bytes: &'static [u8]) -> Self {
-        Self {
-            path: AssetPath::new_embedded(path),
-            bytes: Bytes::new_static(bytes),
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! embedded_asset {
-    ($path_str:expr => $bytes:expr) => {{
-        $crate::asset::EmbeddedAsset::new($path_str, $bytes)
-    }}
-}
-
-pub enum AssetEvent {
-    /// An asset has been created.
-    Created(AssetPath),
-    /// An asset has been changed.
-    Changed(AssetPath),
-    /// An asset has been deleted.
-    Deleted(AssetPath),
-}

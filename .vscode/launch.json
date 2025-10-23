@@ -1,63 +1,6 @@
 {
-    "version": "1.2.0",
+    "version": "0.2.0",
     "configurations": [
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in library 'vislum_container'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=vislum-container"
-                ],
-                "filter": {
-                    "name": "vislum_container",
-                    "kind": "lib"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in library 'vislum_dt'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=vislum-dt"
-                ],
-                "filter": {
-                    "name": "vislum_dt",
-                    "kind": "lib"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in library 'vislum_core'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=vislum-core"
-                ],
-                "filter": {
-                    "name": "vislum_core",
-                    "kind": "lib"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
         {
             "type": "lldb",
             "request": "launch",
@@ -98,6 +41,101 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug unit tests in library 'vislum_op'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=vislum-op"
+                ],
+                "filter": {
+                    "name": "vislum_op",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'vislum_math'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=vislum-math"
+                ],
+                "filter": {
+                    "name": "vislum_math",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'vislum_render'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=vislum-render"
+                ],
+                "filter": {
+                    "name": "vislum_render",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'vislum_system'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=vislum-system"
+                ],
+                "filter": {
+                    "name": "vislum_system",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'vislum_runtime'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=vislum-runtime"
+                ],
+                "filter": {
+                    "name": "vislum_runtime",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug unit tests in library 'vislum_asset'",
             "cargo": {
                 "args": [
@@ -117,17 +155,35 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'vislum_op'",
+            "name": "Debug example 'basic_usage'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--example=basic_usage",
+                    "--package=vislum-asset"
+                ],
+                "filter": {
+                    "name": "basic_usage",
+                    "kind": "example"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in example 'basic_usage'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--lib",
-                    "--package=vislum-op"
+                    "--example=basic_usage",
+                    "--package=vislum-asset"
                 ],
                 "filter": {
-                    "name": "vislum_op",
-                    "kind": "lib"
+                    "name": "basic_usage",
+                    "kind": "example"
                 }
             },
             "args": [],
@@ -173,16 +229,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'vislum_runtime'",
+            "name": "Debug unit tests in library 'vislum_op_std'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=vislum-runtime"
+                    "--package=vislum-op-std"
                 ],
                 "filter": {
-                    "name": "vislum_runtime",
+                    "name": "vislum_op_std",
                     "kind": "lib"
                 }
             },
@@ -192,16 +248,72 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'vislum_render'",
+            "name": "Debug unit tests in library 'vislum_shader'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=vislum-render"
+                    "--package=vislum-shader"
                 ],
                 "filter": {
-                    "name": "vislum_render",
+                    "name": "vislum_shader",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'vislum-test'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=vislum-test",
+                    "--package=vislum-test"
+                ],
+                "filter": {
+                    "name": "vislum-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'vislum-test'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=vislum-test",
+                    "--package=vislum-test"
+                ],
+                "filter": {
+                    "name": "vislum-test",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'vislum_dxc'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=vislum-dxc"
+                ],
+                "filter": {
+                    "name": "vislum_dxc",
                     "kind": "lib"
                 }
             },

@@ -3,44 +3,20 @@ use vislum_render::{MeshManager, RenderPassCollector, SceneManager, ShaderManage
 use vislum_render::types::{RenderDevice, RenderQueue};
 use vislum_system::{ResMut, Res, Resource, Resources};
 
+/// A runner runs the runtime.
+pub type Runner = Box<dyn Fn(&mut Engine)>;
+
 /// The runtime for the vislum engine.
-pub struct Runtime {
-    pub resources: Resources,
+pub struct Engine {
+    pub runner: Runner,
 }
 
-impl Runtime {
-    pub fn new(device: RenderDevice, queue: RenderQueue) -> Self {
-        let mut resources = Resources::new();
-        
-        // Insert the default resources.
-        resources.insert(NodeGraphSystem::default());
-        resources.insert(TextureManager::new(device.clone(), queue.clone()));
-        resources.insert(MeshManager::new(device.clone()));
-        resources.insert(ShaderManager::new(device.clone()));
-        resources.insert(SceneManager::new());
-        resources.insert(RenderPassCollector::new());
-        resources.insert(device);
-        resources.insert(queue);
+impl Engine {
+    /// Runs a single frame.
+    pub fn run_frame(&mut self) {}
 
-
-        Self {
-            resources,
-        }
-    }
-
-    /// Gets a resource by type.
-    pub fn get_resource<T>(&self) -> Res<'_, T>
-    where
-        T: Resource, 
-    {
-        self.resources.get::<T>()
-    }
-
-    /// Gets a mutable system by type.
-    pub fn get_resource_mut<T>(&self) -> ResMut<'_, T>
-    where
-        T: Resource,
-    {
-        self.resources.get_mut::<T>()
+    /// Runs the engine.
+    pub fn run(&mut self) {
+        (self.runner)(&mut self.resources);
     }
 }

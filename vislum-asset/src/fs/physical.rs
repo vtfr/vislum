@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 use crossbeam::channel::Sender;
 use notify_debouncer_full::{
@@ -7,35 +7,33 @@ use notify_debouncer_full::{
 };
 
 use crate::{
-    asset::InternalAssetEvent, fs::{Bytes, Fs, ReadError}, path::AssetPath
+    asset::InternalAssetEvent,
+    fs::{File, Fs, ReadError},
+    path::AssetUri,
 };
 
 /// A filesystem implementation for the editor.
-pub struct EditorFs {
-    root_path: std::path::PathBuf,
+pub struct PhysicalFs {
+    root: PathBuf,
     watcher: Watcher,
 }
 
-impl EditorFs {
-    pub fn new(root_path: std::path::PathBuf, event_tx: Sender<InternalAssetEvent>) -> Self {
-        let watcher = Watcher::new(root_path.clone(), event_tx);
+impl PhysicalFs {
+    pub fn new(root: PathBuf, event_tx: Sender<InternalAssetEvent>) -> Self {
+        let watcher = Watcher::new(root.clone(), event_tx);
 
-        Self {
-            root_path,
-            watcher,
-        }
+        Self { root, watcher }
     }
 }
 
-impl Fs for EditorFs {
-    fn read(&self, path: &AssetPath) -> Result<Bytes, ReadError> {
+impl Fs for PhysicalFs {
+    fn read(&self, path: &AssetUri) -> Result<File, ReadError> {
         // Convert AssetPath to filesystem path
-        let fs_path = self.root_path.join(path.path());
-        
-        match std::fs::read(&fs_path) {
-            Ok(data) => Ok(Bytes::new_owned(data)),
-            Err(_) => Err(ReadError::NotFound),
-        }
+        let physical_path = self.root.join(path.path());
+
+        let bytes = std::fs::read(&physical_path)?;
+
+        Ok(File::new_with_physical_path(physical_path, bytes))
     }
 }
 
@@ -46,10 +44,7 @@ pub(crate) struct Watcher {
 }
 
 impl Watcher {
-    pub fn new(
-        root_path: std::path::PathBuf,
-        event_tx: Sender<InternalAssetEvent>,
-    ) -> Self {
+    pub fn new(root_path: PathBuf, event_tx: Sender<InternalAssetEvent>) -> Self {
         let mut debouncer = {
             let root_path = root_path.clone();
 
@@ -63,24 +58,20 @@ impl Watcher {
                     #[inline(always)]
                     fn process_event(
                         event: DebouncedEvent,
-                        root_path: &std::path::PathBuf,
-                        event_tx: &Sender<InternalAssetEvent>,
+                        _root_path: &std::path::PathBuf,
+                        _event_tx: &Sender<InternalAssetEvent>,
                     ) {
                         // Filter only modify events.
                         if !event.kind.is_modify() {
                             return;
                         }
 
-                        // Get the first path.
-                        let Some(path) = event.paths.first() else {
-                            return;
-                        };
+                        // // Get the first path.
+                        // let Some(path) = event.paths.first() else {
+                        //     return;
+                        // };
 
-                        // Convert filesystem path to AssetPath
-                        if let Ok(relative_path) = path.strip_prefix(root_path) {
-                            let asset_path = AssetPath::new_owned(relative_path);
-                            let _ = event_tx.send(InternalAssetEvent::Changed(asset_path));
-                        }
+                        println!("event: {:?}", event);
                     }
 
                     match event {
