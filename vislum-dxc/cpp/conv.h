@@ -1,21 +1,16 @@
 #pragma once
 
-#include <dxc/dxcapi.h>
+#include <codecvt>
+#include <locale>
 #include <string>
 
-inline std::string extract_utf8_error_message(CComPtr<IDxcBlobEncoding> errorMessage) {
-    BOOL known;
-    UINT32 codePage;
-    if (FAILED(errorMessage->GetEncoding(&known, &codePage))) {
-      return "Unknown error. Failed to retrieve encoding";
-    }
+// Converts a UTF-8 string to a UTF-16 string.
+inline std::wstring utf8_to_utf16(const char* s) {
+    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
+    return conv.from_bytes(s);
+}
 
-    auto buffer_ptr = errorMessage->GetBufferPointer();
-    auto buffer_size = errorMessage->GetBufferSize();
-
-    // On Linux, we can always assume UTF-8.
-    auto bytes = reinterpret_cast<const char*>(buffer_ptr);
-    auto len = buffer_size;
-
-    return std::string(bytes, len);
+inline std::string utf16_to_utf8(const wchar_t* s) {
+    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> conv;
+    return conv.to_bytes(s);
 }
