@@ -3259,6 +3259,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vislum-dxc"
+version = "0.1.0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "vislum-editor"
 version = "0.1.0"
 dependencies = [
@@ -3386,6 +3393,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger",
  "log",
+ "vislum-dxc",
  "vislum-render",
  "vislum-shader",
  "winit",
