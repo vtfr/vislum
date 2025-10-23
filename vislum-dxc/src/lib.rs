@@ -76,6 +76,7 @@ struct DxcIncludeHandlerUserData<'a> {
 pub struct DxcCompilationError(String);
 
 pub struct DxcCompiler {
+    _loader: Arc<DxcLoader>,
     inner: *mut sys::DxcShimCompiler,
 }
 
@@ -87,7 +88,7 @@ impl DxcCompiler {
         match status {
             sys::DxcShimStatus::Ok => {
                 let inner = unsafe { inner.assume_init() };
-                Ok(Arc::new(Self { inner }))
+                Ok(Arc::new(Self { _loader: loader, inner }))
             }
             sys::DxcShimStatus::GetDxcCompilerInstanceError => {
                 Err(DxcCompilerCreationError::GetDxcCompilerInstanceError)
