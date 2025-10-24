@@ -3,7 +3,7 @@ use std::{fmt::Debug, sync::Arc};
 use ash::{ext, khr, vk};
 
 use crate::{
-    new_extensions_struct,
+    impl_extensions,
     rhi::{
         device::{Device, DeviceDescription, DeviceError}, physical::PhysicalDevice,
         surface::Surface,
@@ -11,7 +11,7 @@ use crate::{
     },
 };
 
-new_extensions_struct! {
+impl_extensions! {
     pub struct InstanceExtensions {
         /// Surface support for presenting rendered images
         khr_surface => khr::surface::NAME,

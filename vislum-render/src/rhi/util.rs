@@ -3,7 +3,7 @@ use std::fmt::Display;
 use ash::vk;
 
 #[macro_export]
-macro_rules! new_extensions_struct {
+macro_rules! impl_extensions {
     (
         $(#[$meta:meta])*
         $vis:vis struct $ident:ident {
@@ -78,6 +78,47 @@ macro_rules! new_extensions_struct {
                     $(
                         $field: self.$field || other.$field,
                     )*
+                }
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! impl_vk_mapped_enum {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $ident:ident: $vk_ident:path {
+            $(
+                $(#[$field_meta:meta])*
+                $variant:ident => $vk_variant:ident
+            ),*
+            $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        $vis enum $ident {
+            $(
+                $(#[$field_meta])*
+                $variant,
+            )*
+        }
+
+        impl $ident {
+            pub fn to_vk(&self) -> $vk_ident {
+                match self {
+                    $(
+                        Self::$variant => <$vk_ident>::$vk_variant,
+                    )*
+                }
+            }
+
+            pub fn from_vk(vk: $vk_ident) -> Option<Self> {
+                match vk {
+                    $(
+                        <$vk_ident>::$vk_variant => Some(Self::$variant),
+                    )*
+                    _ => None,
                 }
             }
         }

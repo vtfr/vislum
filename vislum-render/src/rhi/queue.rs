@@ -9,7 +9,6 @@ pub struct Queue {
     pub vk: vk::Queue,
 }
 
-
 impl Queue {
     pub(in crate::rhi) fn new(device: Arc<Device>, vk: vk::Queue) -> Self {
         Self { device, vk }

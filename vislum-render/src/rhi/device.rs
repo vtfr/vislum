@@ -1,13 +1,13 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, RwLock};
 
 use ash::{khr, vk};
 
 use crate::{
-    new_extensions_struct,
+    impl_extensions,
     rhi::{instance::Instance, physical::PhysicalDevice, util::Version},
 };
 
-new_extensions_struct! {
+impl_extensions! {
     pub struct DeviceExtensions {
         ext_extended_dynamic_state => ash::ext::extended_dynamic_state::NAME,
         ext_extended_dynamic_state2 => ash::ext::extended_dynamic_state2::NAME,
@@ -92,6 +92,8 @@ pub struct Device {
     khr_dynamic_rendering_device: Option<khr::dynamic_rendering::Device>,
     khr_swapchain_device: Option<khr::swapchain::Device>,
     ext_extended_dynamic_state_device: Option<ash::ext::extended_dynamic_state::Device>,
+
+    allocator: RwLock<gpu_allocator::vulkan::Allocator>,
 
     enabled_extensions: DeviceExtensions,
 }
@@ -219,15 +221,28 @@ impl Device {
                 .unwrap()
         };
 
+
+        let allocator = gpu_allocator::vulkan::Allocator::new(
+            &gpu_allocator::vulkan::AllocatorCreateDesc{
+                instance: instance.handle().clone(),
+                device: device.clone(),
+                physical_device: physical_device.handle(),
+                debug_settings: gpu_allocator::AllocatorDebugSettings::default(),
+                buffer_device_address: false,
+                allocation_sizes: gpu_allocator::AllocationSizes::default(),
+            }).unwrap();
+
+        let _queue = unsafe { device.get_device_queue(0, 0) };
+
         let khr_synchronization2_device = (device_description.extensions.khr_synchronization2)
-            .then(|| khr::synchronization2::Device::new(instance.handle(), &device));
+            .then(|| khr::synchronization2::Device::new(&instance.handle(), &device));
         let khr_dynamic_rendering_device = (device_description.extensions.khr_dynamic_rendering)
-            .then(|| khr::dynamic_rendering::Device::new(instance.handle(), &device));
+            .then(|| khr::dynamic_rendering::Device::new(&instance.handle(), &device));
         let khr_swapchain_device = (device_description.extensions.khr_swapchain)
-            .then(|| khr::swapchain::Device::new(instance.handle(), &device));
+            .then(|| khr::swapchain::Device::new(&instance.handle(), &device));
         let ext_extended_dynamic_state_device =
             (device_description.extensions.ext_extended_dynamic_state)
-                .then(|| ash::ext::extended_dynamic_state::Device::new(instance.handle(), &device));
+                .then(|| ash::ext::extended_dynamic_state::Device::new(&instance.handle(), &device));
 
         Ok(Arc::new(Self {
             instance,
@@ -238,11 +253,12 @@ impl Device {
             khr_swapchain_device,
             ext_extended_dynamic_state_device,
             enabled_extensions: device_description.extensions,
+            allocator: RwLock::new(allocator),
         }))
     }
 
     #[inline]
-    pub fn handle(&self) -> &ash::Device {
+    pub(in crate::rhi) fn handle(&self) -> &ash::Device {
         &self.device
     }
 
@@ -285,5 +301,10 @@ impl Device {
         }
 
         Ok(())
+    }
+
+    #[inline]
+    pub fn allocator(&self) -> &RwLock<gpu_allocator::vulkan::Allocator> {
+        &self.allocator
     }
 }

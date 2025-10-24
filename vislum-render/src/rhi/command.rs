@@ -1,9 +1,9 @@
 use std::{ops::Range, sync::Arc};
 
-use ash::vk::{self, ImageMemoryBarrier2};
+use ash::vk::{self};
 use smallvec::SmallVec;
 
-use crate::rhi::device::Device;
+use crate::rhi::{device::Device, image::ImageLayout};
 
 pub struct CommandPool {
     device: Arc<Device>,
@@ -45,16 +45,6 @@ impl AccessFlags {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ImageLayout {
-    Undefined,
-    ColorAttachment,
-    DepthStencilAttachment,
-    DepthStencilReadOnly,
-    ShaderReadOnly,
-    TransferSrcOptimal,
-    PresentSrc,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ImageBarrier {
@@ -77,19 +67,6 @@ impl Barrier {
     }
 }
 
-impl ImageLayout {
-    pub fn to_vk(&self) -> vk::ImageLayout {
-        match self {
-            ImageLayout::Undefined => vk::ImageLayout::UNDEFINED,
-            ImageLayout::ColorAttachment => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            ImageLayout::DepthStencilAttachment => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-            ImageLayout::DepthStencilReadOnly => vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-            ImageLayout::ShaderReadOnly => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            ImageLayout::TransferSrcOptimal => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-            ImageLayout::PresentSrc => vk::ImageLayout::PRESENT_SRC_KHR,
-        }
-    }
-}
 
 impl CommandBuffer {
     pub fn begin_rendering(&self) {
@@ -161,10 +138,10 @@ impl CommandBuffer {
         };
     }
     
-    pub fn set_vertex_buffer(&self, buffer: crate::encoder::BufferHandle, offset: u64) {
+    pub fn set_vertex_buffer(&self, buffer: vk::Buffer, offset: u64) {
         unsafe {
             self.device.handle()
-                .cmd_bind_vertex_buffers(self.inner, 0, &[buffer.0], &[offset]);
+                .cmd_bind_vertex_buffers(self.inner, 0, &[buffer], &[offset]);
         }
     }
 }

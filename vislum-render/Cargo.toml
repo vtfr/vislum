@@ -14,3 +14,4 @@ static_assertions.workspace = true
 anyhow = "1.0.99"
 smallvec = { workspace = true }
 bitflags = { workspace = true }
+gpu-allocator = "0.28.0"
