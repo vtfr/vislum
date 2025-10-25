@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
 use vulkano::{
     descriptor_set::{
         DescriptorSet, WriteDescriptorSet, allocator::DescriptorSetAllocator, layout::{
@@ -12,7 +13,7 @@ use vulkano::{
 };
 
 /// The type of a bindless resource.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BindlessResourceType {
     Texture,
     Sampler,

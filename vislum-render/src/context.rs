@@ -1,7 +1,17 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use vulkano::{
-    descriptor_set::allocator::{DescriptorSetAllocator, StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo}, device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo, QueueFlags, physical::PhysicalDevice}, instance::{Instance, InstanceCreateFlags, InstanceExtensions}, library::{self, VulkanLibrary}, memory::allocator::{GenericMemoryAllocatorCreateInfo, MemoryAllocator, StandardMemoryAllocator}
+    descriptor_set::allocator::{
+        DescriptorSetAllocator, StandardDescriptorSetAllocator,
+        StandardDescriptorSetAllocatorCreateInfo,
+    },
+    device::{
+        Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo,
+        QueueFlags, physical::PhysicalDevice,
+    },
+    instance::{Instance, InstanceExtensions},
+    library::VulkanLibrary,
+    memory::allocator::{MemoryAllocator, StandardMemoryAllocator},
 };
 
 use crate::resources::ResourceManager;
@@ -113,9 +123,7 @@ impl RenderContextBuilder {
 
         let instance = Instance::new(library, create_info).unwrap();
 
-        Self {
-            instance,
-        }
+        Self { instance }
     }
 
     pub fn auto() -> RenderContext {
@@ -151,12 +159,10 @@ impl RenderContextBuilder {
         } = compatible_physical_device;
 
         let device_create_info = DeviceCreateInfo {
-            queue_create_infos: vec![
-                QueueCreateInfo {
-                    queue_family_index,
-                    ..Default::default()
-                }
-            ],
+            queue_create_infos: vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }],
             enabled_extensions,
             enabled_features: DeviceFeatures {
                 dynamic_rendering: true,
@@ -190,14 +196,21 @@ pub struct RenderContext {
 
 impl RenderContext {
     pub fn new(device: Arc<Device>, queue: Arc<Queue>) -> Self {
-        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(device.clone(), StandardDescriptorSetAllocatorCreateInfo{
-            update_after_bind: false,
-            ..Default::default()
-        }));
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+            device.clone(),
+            StandardDescriptorSetAllocatorCreateInfo {
+                update_after_bind: false,
+                ..Default::default()
+            },
+        ));
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-        let resource_manager = ResourceManager::new(device.clone(), descriptor_set_allocator.clone(), memory_allocator.clone());
+        let resource_manager = ResourceManager::new(
+            device.clone(),
+            descriptor_set_allocator.clone(),
+            memory_allocator.clone(),
+        );
 
         Self {
             device,
@@ -212,5 +225,3 @@ impl RenderContext {
         &mut self.resource_manager
     }
 }
-
-

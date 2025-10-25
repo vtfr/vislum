@@ -1,12 +1,13 @@
 use std::{fmt::Debug, sync::Arc, u32, vec};
 
-use vulkano::{descriptor_set::{DescriptorSet, allocator::DescriptorSetAllocator, layout::{DescriptorBindingFlags, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateFlags, DescriptorSetLayoutCreateInfo, DescriptorType}, pool::DescriptorPool}, device::Device, image::ImageCreateInfo, memory::allocator::{AllocationCreateInfo, MemoryAllocator}, shader::ShaderStages};
+use vulkano::{buffer::BufferCreateInfo, descriptor_set::{DescriptorSet, allocator::DescriptorSetAllocator, layout::{DescriptorBindingFlags, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateFlags, DescriptorSetLayoutCreateInfo, DescriptorType}, pool::DescriptorPool}, device::Device, image::ImageCreateInfo, memory::allocator::{AllocationCreateInfo, MemoryAllocator}, shader::ShaderStages};
 
-use crate::resources::{bindless::BindlessTable, id::{ErasedResourceId, ResourceStorage}, texture::{Texture, TextureDescription, TextureHandle}};
+use crate::resources::{bindless::BindlessTable, id::{ErasedResourceId, ResourceStorage}, mesh::MeshDescriptor, texture::{Texture, TextureDescription, TextureHandle}};
 
 pub mod id;
 pub mod texture;
 pub mod bindless;
+pub mod mesh;
 
 pub struct ResourceManager {
     device: Arc<Device>,
@@ -90,5 +91,31 @@ impl ResourceManager {
         let id = self.textures.insert(texture);
 
         TextureHandle::new(id, description, self.resource_drop_tx.clone())
+    }
+
+    pub fn create_mesh(&mut self, descriptor: MeshDescriptor) -> MeshHandle {
+        let create_info = BufferCreateInfo {
+            size: descriptor.vertices.len() * std::mem::size_of::<Vertex>() as u64,
+            usage: BufferUsage::VERTEX_BUFFER,
+            sharing: Sharing::Exclusive,
+            ..Default::default()
+        };
+
+        todo!()
+
+        // let vertices = vulkano::buffer::Buffer::from_iter(
+        //     self.allocator.clone(),
+        //     BufferCreateInfo{
+        //         flags: todo!(),
+        //         sharing: todo!(),
+        //         size: todo!(),
+        //         usage: todo!(),
+        //         external_memory_handle_types: todo!(),
+        //         _ne: todo!(),
+        //     },
+        //     AllocationCreateInfo::default(),
+        // ).unwrap();
+
+        
     }
 }
