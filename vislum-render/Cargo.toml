@@ -4,14 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ash-window = { workspace = true }
-winit = { workspace = true }
-log = { workspace = true }
-thiserror = { workspace = true }
-raw-window-handle = "0.6.2"
-ash = "0.38.0"
-static_assertions.workspace = true
-anyhow = "1.0.99"
-smallvec = { workspace = true }
+vulkano = { workspace = true }
 bitflags = { workspace = true }
-gpu-allocator = "0.28.0"
+serde = { workspace = true }
+smallvec = { workspace = true }
+static_assertions = { workspace = true }
+vislum-dxc = { path = "../vislum-dxc" }
+thiserror = { workspace = true }
+slotmap = { workspace = true }
+crossbeam-channel = { workspace = true }

@@ -80,6 +80,11 @@ pub struct DxcCompiler {
     inner: *mut sys::DxcShimCompiler,
 }
 
+// SAFETY: DxcCompiler is thread-safe.
+// This is also a lie. Gotta fix this...
+unsafe impl Send for DxcCompiler {}
+unsafe impl Sync for DxcCompiler {}
+
 impl DxcCompiler {
     pub fn new(loader: Arc<DxcLoader>) -> Result<Arc<Self>, DxcCompilerCreationError> {
         let mut inner = MaybeUninit::<*mut sys::DxcShimCompiler>::uninit();
