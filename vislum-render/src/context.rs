@@ -1,10 +1,10 @@
 use std::sync::{Arc, OnceLock};
 
 use vulkano::{
-    device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo, QueueFlags, physical::PhysicalDevice},
-    instance::{Instance, InstanceCreateFlags, InstanceExtensions},
-    library::{self, VulkanLibrary},
+    descriptor_set::allocator::{DescriptorSetAllocator, StandardDescriptorSetAllocator, StandardDescriptorSetAllocatorCreateInfo}, device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, Queue, QueueCreateInfo, QueueFlags, physical::PhysicalDevice}, instance::{Instance, InstanceCreateFlags, InstanceExtensions}, library::{self, VulkanLibrary}, memory::allocator::{GenericMemoryAllocatorCreateInfo, MemoryAllocator, StandardMemoryAllocator}
 };
+
+use crate::resources::ResourceManager;
 
 bitflags::bitflags! {
     pub struct RenderingFeatures: u8 {
@@ -175,19 +175,42 @@ impl RenderContextBuilder {
         let (device, mut queues) = Device::new(physical_device, device_create_info).unwrap();
         let queue = queues.next().unwrap();
 
-        RenderContext {
-            instance: self.instance,
-            device,
-            queue,
-        }
+        RenderContext::new(device, queue)
     }
 }
 
 #[derive(Debug)]
 pub struct RenderContext {
-    instance: Arc<Instance>,
     device: Arc<Device>,
     queue: Arc<Queue>,
+    descriptor_set_allocator: Arc<dyn DescriptorSetAllocator>,
+    memory_allocator: Arc<dyn MemoryAllocator>,
+    resource_manager: ResourceManager,
+}
+
+impl RenderContext {
+    pub fn new(device: Arc<Device>, queue: Arc<Queue>) -> Self {
+        let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(device.clone(), StandardDescriptorSetAllocatorCreateInfo{
+            update_after_bind: false,
+            ..Default::default()
+        }));
+
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+
+        let resource_manager = ResourceManager::new(device.clone(), descriptor_set_allocator.clone(), memory_allocator.clone());
+
+        Self {
+            device,
+            queue,
+            descriptor_set_allocator,
+            memory_allocator,
+            resource_manager,
+        }
+    }
+
+    pub fn resource_manager_mut(&mut self) -> &mut ResourceManager {
+        &mut self.resource_manager
+    }
 }
 
 
