@@ -5,8 +5,9 @@ edition = "2024"
 
 [dependencies]
 vislum-shader = { path = "../vislum-shader" }
-vislum-render = { path = "../vislum-render" }
+# vislum-render = { path = "../vislum-render" }
 winit = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
 vislum-dxc = { path = "../vislum-dxc" }
+vislum-rhi = { path = "../vislum-rhi" }

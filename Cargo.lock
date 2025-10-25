@@ -3373,6 +3373,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "vislum-rhi"
+version = "0.1.0"
+dependencies = [
+ "ash",
+ "log",
+ "vislum-rhi-macros",
+]
+
+[[package]]
+name = "vislum-rhi-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "vislum-runtime"
 version = "0.1.0"
 dependencies = [
@@ -3416,7 +3434,7 @@ dependencies = [
  "env_logger",
  "log",
  "vislum-dxc",
- "vislum-render",
+ "vislum-rhi",
  "vislum-shader",
  "winit",
 ]

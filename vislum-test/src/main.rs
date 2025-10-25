@@ -1,13 +1,11 @@
-use vislum_render::{context::RenderContextBuilder, resources::texture::{TextureDescription, TextureDimensions}};
+use vislum_rhi::instance::{Instance, InstanceExtensions, Library};
 
 fn main() {
-    let mut context = RenderContextBuilder::auto();
-    let texture = context.resource_manager_mut().create_texture(TextureDescription {
-        dimensions: TextureDimensions {
-            width: 1920,
-            height: 1080,
-        },
+    let library = Library::new();
+    let instance = Instance::new(library, InstanceExtensions {
+        khr_surface: true,
+        ..Default::default()
     });
-
-    println!("Context: {:#?}", context);
+    let physical_devices = instance.enumerate_physical_devices();
+    println!("Physical devices: {:#?}", physical_devices);
 }
