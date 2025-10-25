@@ -101,12 +101,12 @@ macro_rules! vk_enum {
         }
 
         impl $ident {
-            pub const fn from_vk(value: $vk_type) -> Self {
+            pub const fn from_vk(value: $vk_type) -> Option<Self> {
                 match value {
                     $(
-                        <$vk_type>::$vk_ident => <Self>::$variant_ident,
+                        <$vk_type>::$vk_ident => Some(<Self>::$variant_ident),
                     )*
-                    _ => unreachable!(),
+                    _ => None,
                 }
             }
 

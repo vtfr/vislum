@@ -7,3 +7,5 @@ edition = "2024"
 ash = { workspace = true }
 log = { workspace = true }
 vislum-rhi-macros = { path = "./macros" }
+gpu-allocator = { version = "0.28.0", features = ["vulkan"] }
+thiserror = { workspace = true }

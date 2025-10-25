@@ -3,8 +3,11 @@ use std::sync::Arc;
 use ash::vk;
 
 use crate::{
-    VkHandle,
-    device::{ffi::{DeviceExtensions, DeviceFeatures, DevicePhysicalFeaturesFFI}, physical::PhysicalDevice},
+    AshHandle, VkHandle,
+    device::{
+        ffi::{DeviceExtensions, DeviceFeatures, DevicePhysicalFeaturesFFI},
+        physical::PhysicalDevice,
+    },
     instance::Instance,
     version::Version,
 };
@@ -17,23 +20,38 @@ pub struct DeviceCreateInfo {
 
 pub struct Device {
     physical_device: Arc<PhysicalDevice>,
-    device: vk::Device,
+    inner: ash::Device,
+}
+
+impl AshHandle for Device {
+    type Handle = ash::Device;
+
+    #[inline]
+    fn ash_handle(&self) -> Self::Handle {
+        self.inner.clone()
+    }
 }
 
 impl VkHandle for Device {
     type Handle = vk::Device;
 
+    #[inline]
     fn vk_handle(&self) -> Self::Handle {
-        self.device
+        self.inner.handle()
     }
 }
 
 impl Device {
+    #[inline]
+    pub fn physical_device(&self) -> &Arc<PhysicalDevice> {
+        &self.physical_device
+    }
+
     pub fn new(
         instance: Arc<Instance>,
         physical_device: Arc<PhysicalDevice>,
         create_info: DeviceCreateInfo,
-    ) -> Self {
+    ) -> Arc<Self> {
         let DeviceCreateInfo {
             api_version,
             enabled_extensions,
@@ -54,15 +72,21 @@ impl Device {
             panic!("Missing features: {:?}", missing_features);
         }
 
-        let enabled_extension_names = enabled_extensions.to_vk()
+        let enabled_extension_names = enabled_extensions
+            .to_vk()
             .map(|name| name.as_ptr())
             .collect::<Vec<_>>();
 
-        let create_info = vk::DeviceCreateInfo::default()
-            .enabled_extension_names(&*enabled_extension_names);
+        let create_info =
+            vk::DeviceCreateInfo::default().enabled_extension_names(&*enabled_extension_names);
 
         let mut ffi = DevicePhysicalFeaturesFFI::default();
-        let create_info = ffi.wire_to_device_create_info(api_version, &enabled_extensions, &enabled_features, create_info);
+        let create_info = ffi.wire_to_device_create_info(
+            api_version,
+            &enabled_extensions,
+            &enabled_features,
+            create_info,
+        );
 
         let device = unsafe {
             instance
@@ -71,45 +95,17 @@ impl Device {
                 .unwrap()
         };
 
-        // Arm the bomb.
-        //
-        // From now one we're guaranteed that the device is valid, so it must be destroyed
-        // if any of the following operations fail.
-        let mut maybe_drop_device = MaybeDrop::new(move || unsafe {
-            device.destroy_device(None);
-        });
-
-        // Everything went well. Disarm.
-        maybe_drop_device.disarm();
-
-        // Device { physical_device }
-        todo!()
+        Arc::new(Device {
+            physical_device,
+            inner: device,
+        })
     }
 }
 
-struct MaybeDrop<F: FnOnce()>(Option<F>);
-
-impl<F> MaybeDrop<F>
-where
-    F: FnOnce(),
-{
-    pub fn new(f: F) -> Self {
-        Self(Some(f))
-    }
-
-    // Disarms the bomb.
-    pub fn disarm(&mut self) {
-        self.0 = None;
-    }
-}
-
-impl<F> Drop for MaybeDrop<F>
-where
-    F: FnOnce(),
-{
+impl Drop for Device {
     fn drop(&mut self) {
-        if let Some(f) = self.0.take() {
-            f();
+        unsafe {
+            self.inner.destroy_device(None);
         }
     }
 }

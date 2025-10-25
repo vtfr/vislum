@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{device::physical::PhysicalDevice, impl_extensions, version::Version};
+use crate::{AshHandle, VkHandle, device::physical::PhysicalDevice, impl_extensions, version::Version};
 
 pub struct Library {
     inner: ash::Entry,
@@ -35,6 +35,22 @@ impl_extensions! {
 pub struct Instance {
     library: Arc<Library>,
     instance: ash::Instance,
+}
+
+impl AshHandle for Instance {
+    type Handle = ash::Instance;
+
+    fn ash_handle(&self) -> Self::Handle {
+        self.instance.clone()
+    }
+}
+
+impl VkHandle for Instance {
+    type Handle = vk::Instance;
+
+    fn vk_handle(&self) -> Self::Handle {
+        self.instance.handle()
+    }
 }
 
 impl std::fmt::Debug for Instance {

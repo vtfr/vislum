@@ -91,6 +91,11 @@ impl PhysicalDevice {
         &self.device_features
     }
 
+    #[inline]
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.instance
+    }
+
     fn enumerate_device_properties(
         instance: &Arc<Instance>,
         physical_device: vk::PhysicalDevice,
@@ -106,7 +111,8 @@ impl PhysicalDevice {
             driver_version: Version::from_vk(properties.driver_version),
             vendor_id: properties.vendor_id,
             device_id: properties.device_id,
-            device_type: PhysicalDeviceType::from_vk(properties.device_type),
+            device_type: PhysicalDeviceType::from_vk(properties.device_type)
+                .expect("Unknown physical device type"),
             device_name: properties
                 .device_name_as_c_str()
                 .unwrap()

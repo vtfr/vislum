@@ -1,4 +1,7 @@
+pub mod command_buffer;
 pub mod device;
+pub mod image;
+pub mod memory;
 pub mod instance;
 pub mod macros;
 pub mod version;
@@ -27,4 +30,10 @@ where
     fn vk_raw_handle(&self) -> u64 {
         ash::vk::Handle::as_raw(self.vk_handle())
     }
+}
+
+pub trait AshHandle {
+    type Handle;
+
+    fn ash_handle(&self) -> Self::Handle;
 }

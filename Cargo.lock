@@ -1391,6 +1391,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpu-allocator"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51255ea7cfaadb6c5f1528d43e92a82acb2b96c43365989a28b2d44ee38f8795"
+dependencies = [
+ "ash",
+ "log",
+ "objc2 0.6.2",
+ "objc2-foundation 0.3.1",
+ "objc2-metal 0.3.1",
+ "presser",
+ "thiserror 2.0.16",
+ "windows 0.61.3",
+]
+
+[[package]]
 name = "gpu-descriptor"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3377,7 +3393,9 @@ name = "vislum-rhi"
 version = "0.1.0"
 dependencies = [
  "ash",
+ "gpu-allocator 0.28.0",
  "log",
+ "thiserror 2.0.16",
  "vislum-rhi-macros",
 ]
 
@@ -3844,7 +3862,7 @@ dependencies = [
  "glow",
  "glutin_wgl_sys",
  "gpu-alloc",
- "gpu-allocator",
+ "gpu-allocator 0.27.0",
  "gpu-descriptor",
  "hashbrown",
  "js-sys",
