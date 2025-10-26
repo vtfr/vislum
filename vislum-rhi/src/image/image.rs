@@ -31,10 +31,17 @@ impl Default for ImageCreateInfo {
     }
 }
 
+enum ImageOwner {
+    Owned {
+        allocation: MemoryAllocation,
+    },
+    Swapchain,
+}
+
 pub struct Image {
     device: Arc<Device>,
     image: vk::Image,
-    allocation: MemoryAllocation,
+    owner: ImageOwner,
     dimensions: ImageDimensions,
     extent: Extent3D,
     format: ImageFormat,
@@ -65,6 +72,9 @@ impl Image {
             .image_type(image_type)
             .format(create_info.format.to_vk())
             .extent(create_info.extent)
+            .mip_levels(1)
+            .array_layers(1)
+            .samples(vk::SampleCountFlags::TYPE_1)
             .tiling(vk::ImageTiling::OPTIMAL)
             .usage(create_info.usage)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
@@ -99,11 +109,29 @@ impl Image {
         Arc::new(Self {
             device,
             image,
-            allocation,
+            owner: ImageOwner::Owned {
+                allocation,
+            },
             dimensions: create_info.dimensions,
             extent: create_info.extent,
             format: create_info.format,
         })
+    }
+
+    /// Creates a new image from a swapchain.
+    pub fn from_swapchain(
+        device: Arc<Device>,
+        image: vk::Image,
+        create_info: ImageCreateInfo,
+    ) -> Self {
+        Self {
+            device,
+            image,
+            owner: ImageOwner::Swapchain,
+            dimensions: create_info.dimensions,
+            extent: create_info.extent,
+            format: create_info.format,
+        }
     }
 
     #[inline]
@@ -127,15 +155,26 @@ impl Image {
     }
 
     #[inline]
-    pub fn allocation(&self) -> &MemoryAllocation {
-        &self.allocation
+    pub fn allocation(&self) -> Option<&MemoryAllocation> {
+        match &self.owner {
+            ImageOwner::Owned { allocation } => Some(allocation),
+            ImageOwner::Swapchain => None,
+        }
     }
 }
 
 impl Drop for Image {
     fn drop(&mut self) {
         unsafe {
-            self.device.ash_handle().destroy_image(self.image, None);
+            match &mut self.owner {
+                ImageOwner::Owned { allocation } => {
+                    self.device.ash_handle().destroy_image(self.image, None);
+                }
+                ImageOwner::Swapchain => {
+                    // No need to destroy the image, it's owned by the swapchain
+                    // and will be destroyed when the swapchain is destroyed
+                }
+            }
         }
     }
 }

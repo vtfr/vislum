@@ -28,7 +28,8 @@ impl VkHandle for CommandPool {
 }
 
 impl CommandPool {
-    pub fn new(device: Arc<Device>, create_info: CommandPoolCreateInfo) -> Arc<Self> {
+    /// Creates a new command pool.
+    pub fn new(device: Arc<Device>, create_info: CommandPoolCreateInfo) -> Self {
         let mut flags = vk::CommandPoolCreateFlags::empty();
         if create_info.transient {
             flags |= vk::CommandPoolCreateFlags::TRANSIENT;
@@ -48,18 +49,32 @@ impl CommandPool {
                 .expect("Failed to create command pool")
         };
 
-        Arc::new(Self {
+        Self {
             device,
             pool,
             queue_family_index: create_info.queue_family_index,
-        })
+        }
     }
 
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
+    #[inline]
     pub fn queue_family_index(&self) -> u32 {
         self.queue_family_index
     }
 
-    pub fn allocate_command_buffers(self: &Arc<Self>, count: u32) -> Vec<CommandBuffer> {
+    /// Allocates `count` command buffers from the pool.
+    /// 
+    /// # Safety
+    /// This was designed around the assumption that we'll only have one command buffer per frame.
+    /// There are thousands of crazy vulkan rules that we're skipping for now.
+    pub fn allocate_command_buffers(
+        self: &Arc<Self>,
+        count: u32,
+    ) -> impl ExactSizeIterator<Item = CommandBuffer> {
         let alloc_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(self.pool)
             .level(vk::CommandBufferLevel::PRIMARY)
@@ -75,26 +90,6 @@ impl CommandPool {
         buffers
             .into_iter()
             .map(|buffer| CommandBuffer::new(self.clone(), buffer))
-            .collect()
-    }
-
-    pub fn reset(&self, release_resources: bool) {
-        let flags = if release_resources {
-            vk::CommandPoolResetFlags::RELEASE_RESOURCES
-        } else {
-            vk::CommandPoolResetFlags::empty()
-        };
-
-        unsafe {
-            self.device
-                .ash_handle()
-                .reset_command_pool(self.pool, flags)
-                .expect("Failed to reset command pool");
-        }
-    }
-
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
     }
 }
 

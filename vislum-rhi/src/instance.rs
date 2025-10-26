@@ -16,7 +16,7 @@ impl Library {
     }
 
     #[inline]
-    pub(crate) fn entry(&self) -> &ash::Entry {
+    pub fn entry(&self) -> &ash::Entry {
         &self.inner
     }
 }
@@ -35,6 +35,7 @@ impl_extensions! {
 pub struct Instance {
     library: Arc<Library>,
     instance: ash::Instance,
+    khr_surface: Option<ash::khr::surface::Instance>,
 }
 
 impl AshHandle for Instance {
@@ -95,12 +96,32 @@ impl Instance {
 
         let instance = unsafe { library.entry().create_instance(&create_info, None).unwrap() };
 
-        Arc::new(Self { library, instance })
+        let khr_surface = if extensions.khr_surface {
+            Some(ash::khr::surface::Instance::new(library.entry(), &instance))
+        } else {
+            None
+        };
+
+        Arc::new(Self {
+            library,
+            instance,
+            khr_surface,
+        })
     }
 
     #[inline]
-    pub(crate) fn instance(&self) -> &ash::Instance {
+    pub fn instance(&self) -> &ash::Instance {
         &self.instance
+    }
+
+    #[inline]
+    pub fn entry(&self) -> &ash::Entry {
+        self.library.entry()
+    }
+
+    #[inline]
+    pub fn ash_khr_surface(&self) -> &ash::khr::surface::Instance {
+        self.khr_surface.as_ref().expect("khr_surface extension not enabled")
     }
 
     pub fn enumerate_physical_devices(self: &Arc<Self>) -> Vec<Arc<PhysicalDevice>> {

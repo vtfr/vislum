@@ -4,7 +4,7 @@ use ash::vk;
 
 use crate::{AshHandle, VkHandle, device::device::Device};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MemoryLocation {
     GpuOnly,
     CpuToGpu,

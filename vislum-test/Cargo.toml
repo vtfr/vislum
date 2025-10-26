@@ -11,3 +11,4 @@ env_logger = { workspace = true }
 log = { workspace = true }
 vislum-dxc = { path = "../vislum-dxc" }
 vislum-rhi = { path = "../vislum-rhi" }
+ash = { workspace = true }

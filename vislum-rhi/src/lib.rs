@@ -1,9 +1,16 @@
+pub mod buffer;
 pub mod command_buffer;
+pub mod descriptor;
 pub mod device;
 pub mod image;
-pub mod memory;
 pub mod instance;
 pub mod macros;
+pub mod memory;
+pub mod pipeline;
+pub mod queue;
+pub mod surface;
+pub mod swapchain;
+pub mod sync;
 pub mod version;
 
 pub trait VkHandle {

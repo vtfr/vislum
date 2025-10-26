@@ -21,6 +21,7 @@ pub struct DeviceCreateInfo {
 pub struct Device {
     physical_device: Arc<PhysicalDevice>,
     inner: ash::Device,
+    khr_swapchain: Option<ash::khr::swapchain::Device>,
 }
 
 impl AshHandle for Device {
@@ -77,8 +78,16 @@ impl Device {
             .map(|name| name.as_ptr())
             .collect::<Vec<_>>();
 
+        // Request a queue from family 0 (assuming it exists and supports graphics)
+        let queue_priorities = [1.0];
+        let queue_create_info = vk::DeviceQueueCreateInfo::default()
+            .queue_family_index(0)
+            .queue_priorities(&queue_priorities);
+
         let create_info =
-            vk::DeviceCreateInfo::default().enabled_extension_names(&*enabled_extension_names);
+            vk::DeviceCreateInfo::default()
+                .enabled_extension_names(&*enabled_extension_names)
+                .queue_create_infos(std::slice::from_ref(&queue_create_info));
 
         let mut ffi = DevicePhysicalFeaturesFFI::default();
         let create_info = ffi.wire_to_device_create_info(
@@ -95,10 +104,22 @@ impl Device {
                 .unwrap()
         };
 
+        let khr_swapchain = if enabled_extensions.khr_swapchain {
+            Some(ash::khr::swapchain::Device::new(&instance.instance(), &device))
+        } else {
+            None
+        };
+
         Arc::new(Device {
             physical_device,
             inner: device,
+            khr_swapchain,
         })
+    }
+
+    #[inline]
+    pub fn ash_khr_swapchain(&self) -> &ash::khr::swapchain::Device {
+        self.khr_swapchain.as_ref().expect("khr_swapchain extension not enabled")
     }
 }
 

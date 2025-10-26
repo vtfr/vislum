@@ -5,7 +5,11 @@ edition = "2024"
 
 [dependencies]
 ash = { workspace = true }
+ash-window = "0.13.0"
 log = { workspace = true }
 vislum-rhi-macros = { path = "./macros" }
 gpu-allocator = { version = "0.28.0", features = ["vulkan"] }
 thiserror = { workspace = true }
+raw-window-handle = "0.6"
+bitflags = "2.9.3"
+smallvec = "1.10.0"

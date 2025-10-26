@@ -24,10 +24,6 @@ impl CommandBuffer {
         Self { pool, buffer }
     }
 
-    pub fn pool(&self) -> &Arc<CommandPool> {
-        &self.pool
-    }
-
     pub fn begin(&self, one_time_submit: bool) {
         let mut flags = vk::CommandBufferUsageFlags::empty();
         if one_time_submit {
@@ -52,6 +48,28 @@ impl CommandBuffer {
                 .ash_handle()
                 .end_command_buffer(self.buffer)
                 .expect("Failed to end command buffer");
+        }
+    }
+
+    pub fn pipeline_barrier(
+        &self,
+        src_stage_mask: vk::PipelineStageFlags,
+        dst_stage_mask: vk::PipelineStageFlags,
+        dependency_flags: vk::DependencyFlags,
+        memory_barriers: &[vk::MemoryBarrier],
+        buffer_memory_barriers: &[vk::BufferMemoryBarrier],
+        image_memory_barriers: &[vk::ImageMemoryBarrier],
+    ) {
+        unsafe {
+            self.pool.device().ash_handle().cmd_pipeline_barrier(
+                self.buffer,
+                src_stage_mask,
+                dst_stage_mask,
+                dependency_flags,
+                memory_barriers,
+                buffer_memory_barriers,
+                image_memory_barriers,
+            );
         }
     }
 
@@ -292,6 +310,94 @@ impl CommandBuffer {
                     pass_op,
                     depth_fail_op,
                     compare_op,
+                );
+        }
+    }
+
+    // Drawing
+    pub fn bind_pipeline(&self, bind_point: vk::PipelineBindPoint, pipeline: &impl VkHandle<Handle = vk::Pipeline>) {
+        unsafe {
+            self.pool
+                .device()
+                .ash_handle()
+                .cmd_bind_pipeline(self.buffer, bind_point, pipeline.vk_handle());
+        }
+    }
+
+    pub fn bind_vertex_buffer(&self, buffer: &impl VkHandle<Handle = vk::Buffer>, offset: u64) {
+        let buffers = [buffer.vk_handle()];
+        let offsets = [offset];
+        unsafe {
+            self.pool
+                .device()
+                .ash_handle()
+                .cmd_bind_vertex_buffers(self.buffer, 0, &buffers, &offsets);
+        }
+    }
+
+    pub fn bind_index_buffer(&self, buffer: &impl VkHandle<Handle = vk::Buffer>, offset: u64, index_type: vk::IndexType) {
+        unsafe {
+            self.pool
+                .device()
+                .ash_handle()
+                .cmd_bind_index_buffer(self.buffer, buffer.vk_handle(), offset, index_type);
+        }
+    }
+
+    pub fn bind_descriptor_sets(
+        &self,
+        pipeline_bind_point: vk::PipelineBindPoint,
+        layout: vk::PipelineLayout,
+        first_set: u32,
+        descriptor_sets: &[vk::DescriptorSet],
+    ) {
+        unsafe {
+            self.pool
+                .device()
+                .ash_handle()
+                .cmd_bind_descriptor_sets(
+                    self.buffer,
+                    pipeline_bind_point,
+                    layout,
+                    first_set,
+                    descriptor_sets,
+                    &[],
+                );
+        }
+    }
+
+    pub fn draw(&self, vertices: std::ops::Range<u32>, instances: std::ops::Range<u32>) {
+        unsafe {
+            self.pool
+                .device()
+                .ash_handle()
+                .cmd_draw(
+                    self.buffer,
+                    vertices.end - vertices.start,
+                    instances.end - instances.start,
+                    vertices.start,
+                    instances.start,
+                );
+        }
+    }
+
+    pub fn draw_indexed(
+        &self,
+        indices: std::ops::Range<u32>,
+        vertex_offset: i32,
+        instances: std::ops::Range<u32>,
+    ) {
+        unsafe {
+            self.pool
+                .device()
+                .ash_handle()
+                .cmd_draw_indexed(
+                    self.buffer,
+                    indices.end - indices.start,
+                    instances.end - instances.start,
+                    indices.start,
+                    vertex_offset,
+                    instances.start,
                 );
         }
     }
