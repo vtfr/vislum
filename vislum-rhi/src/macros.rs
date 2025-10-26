@@ -46,6 +46,18 @@ macro_rules! impl_extensions {
                     .map(|(ext, _)| ext)
             }
 
+            /// Convert the extensions to a vector of pointer to the extension names.
+            /// 
+            /// # Safety
+            /// The returned pointers are valid for the entire lifetime of the application,
+            /// as they are obtained from constant [`&'static std::ffi::CStr`] extension names
+            /// in ash. 
+            pub fn to_vk_ptr_names(&self) -> Vec<*const std::ffi::c_char> {
+                self.to_vk()
+                    .map(|ext| ext.as_ptr())
+                    .collect()
+            }
+
             pub fn combine(&self, other: &Self) -> Self {
                 Self {
                     $(

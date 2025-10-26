@@ -3,6 +3,10 @@ name = "vislum-test"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "bindless-demo"
+path = "src/bindless_main.rs"
+
 [dependencies]
 vislum-shader = { path = "../vislum-shader" }
 # vislum-render = { path = "../vislum-render" }

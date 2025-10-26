@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ash::vk;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 
-use crate::{VkHandle, instance::Instance};
+use crate::{AshHandle, VkHandle, instance::Instance};
 
 pub struct Surface {
     instance: Arc<Instance>,
@@ -20,11 +20,18 @@ impl VkHandle for Surface {
 }
 
 impl Surface {
-    pub fn new(instance: Arc<Instance>, window: &impl HasWindowHandle, display: &impl HasDisplayHandle) -> Arc<Self> {
+    pub fn new(
+        instance: Arc<Instance>,
+        window: &impl HasWindowHandle,
+        display: &impl HasDisplayHandle,
+    ) -> Arc<Self> {
+        let ash_entry = instance.library().ash_handle();
+        let ash_instance = instance.ash_handle();
+
         let surface = unsafe {
             ash_window::create_surface(
-                &instance.entry(),
-                &instance.instance(),
+                ash_entry,
+                ash_instance,
                 display.display_handle().unwrap().as_raw(),
                 window.window_handle().unwrap().as_raw(),
                 None,
@@ -32,10 +39,7 @@ impl Surface {
             .expect("Failed to create surface")
         };
 
-        Arc::new(Self {
-            instance,
-            surface,
-        })
+        Arc::new(Self { instance, surface })
     }
 
     #[inline]
@@ -47,8 +51,9 @@ impl Surface {
 impl Drop for Surface {
     fn drop(&mut self) {
         unsafe {
-            self.instance.ash_khr_surface().destroy_surface(self.surface, None);
+            self.instance
+                .ash_khr_surface_handle()
+                .destroy_surface(self.surface, None);
         }
     }
 }
-

@@ -28,8 +28,8 @@ impl AshHandle for Device {
     type Handle = ash::Device;
 
     #[inline]
-    fn ash_handle(&self) -> Self::Handle {
-        self.inner.clone()
+    fn ash_handle(&self) -> &Self::Handle {
+        &self.inner
     }
 }
 
@@ -99,13 +99,13 @@ impl Device {
 
         let device = unsafe {
             instance
-                .instance()
+                .ash_handle()
                 .create_device(physical_device.vk_handle(), &create_info, None)
                 .unwrap()
         };
 
         let khr_swapchain = if enabled_extensions.khr_swapchain {
-            Some(ash::khr::swapchain::Device::new(&instance.instance(), &device))
+            Some(ash::khr::swapchain::Device::new(instance.ash_handle(), &device))
         } else {
             None
         };

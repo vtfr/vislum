@@ -55,6 +55,7 @@ impl DescriptorPool {
             .collect();
 
         let vk_create_info = vk::DescriptorPoolCreateInfo::default()
+            .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
             .max_sets(create_info.max_sets)
             .pool_sizes(&vk_pool_sizes);
 

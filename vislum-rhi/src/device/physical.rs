@@ -2,7 +2,14 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{VkHandle, device::ffi::{DeviceExtensions, DeviceFeatures, DevicePhysicalFeaturesFFI}, impl_extensions, impl_features, instance::Instance, version::Version, vk_enum};
+use crate::{
+    AshHandle, VkHandle,
+    device::ffi::{DeviceExtensions, DeviceFeatures, DevicePhysicalFeaturesFFI},
+    impl_extensions, impl_features,
+    instance::Instance,
+    version::Version,
+    vk_enum,
+};
 
 vk_enum! {
     pub enum PhysicalDeviceType: vk::PhysicalDeviceType {
@@ -44,7 +51,7 @@ impl VkHandle for PhysicalDevice {
 impl std::fmt::Debug for PhysicalDevice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PhysicalDevice")
-            .field("instance", &self.instance.instance().handle())
+            .field("instance", &self.instance.vk_handle())
             .field("physical_device", &self.physical_device)
             .field("device_extensions", &self.device_extensions)
             .field("device_properties", &self.device_properties)
@@ -102,7 +109,7 @@ impl PhysicalDevice {
     ) -> PhysicalDeviceProperties {
         let properties = unsafe {
             instance
-                .instance()
+                .ash_handle()
                 .get_physical_device_properties(physical_device)
         };
 
@@ -127,7 +134,7 @@ impl PhysicalDevice {
     ) -> DeviceExtensions {
         let extension_properties = unsafe {
             instance
-                .instance()
+                .ash_handle()
                 .enumerate_device_extension_properties(physical_device)
         }
         .unwrap_or_default();
@@ -146,10 +153,12 @@ impl PhysicalDevice {
         physical_device: vk::PhysicalDevice,
     ) -> DeviceFeatures {
         let mut ffi = DevicePhysicalFeaturesFFI::default();
-        let mut physical_device_features2 = ffi.wire_to_physical_features2(api_version, device_extensions, Default::default());
+        let mut physical_device_features2 =
+            ffi.wire_to_physical_features2(api_version, device_extensions, Default::default());
 
         unsafe {
-            instance.instance()
+            instance
+                .ash_handle()
                 .get_physical_device_features2(physical_device, &mut physical_device_features2);
         }
 

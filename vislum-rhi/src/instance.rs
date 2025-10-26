@@ -2,10 +2,21 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{AshHandle, VkHandle, device::physical::PhysicalDevice, impl_extensions, version::Version};
+use crate::{
+    AshHandle, VkHandle, device::physical::PhysicalDevice, impl_extensions, version::Version,
+};
 
 pub struct Library {
     inner: ash::Entry,
+}
+
+impl AshHandle for Library {
+    type Handle = ash::Entry;
+
+    #[inline]
+    fn ash_handle(&self) -> &Self::Handle {
+        &self.inner
+    }
 }
 
 impl Library {
@@ -13,11 +24,6 @@ impl Library {
         Arc::new(Self {
             inner: unsafe { ash::Entry::load().unwrap() },
         })
-    }
-
-    #[inline]
-    pub fn entry(&self) -> &ash::Entry {
-        &self.inner
     }
 }
 
@@ -41,14 +47,16 @@ pub struct Instance {
 impl AshHandle for Instance {
     type Handle = ash::Instance;
 
-    fn ash_handle(&self) -> Self::Handle {
-        self.instance.clone()
+    #[inline]
+    fn ash_handle(&self) -> &Self::Handle {
+        &self.instance
     }
 }
 
 impl VkHandle for Instance {
     type Handle = vk::Instance;
 
+    #[inline]
     fn vk_handle(&self) -> Self::Handle {
         self.instance.handle()
     }
@@ -62,17 +70,16 @@ impl std::fmt::Debug for Instance {
 
 impl Instance {
     pub fn new(library: Arc<Library>, extensions: InstanceExtensions) -> Arc<Self> {
-        // Enumerate the instance version. Fallback to V1.0 if the function is not available
-        // or has returned an error.
-        let instance_version =
-            Self::try_enumerate_instance_version(library.entry()).unwrap_or(Version::V1_0);
+        let entry = library.ash_handle();
+
+        // Enumerate the instance version.
+        let instance_version = Self::try_enumerate_instance_version(entry);
 
         // Enumerate the available extensions.
-        let available_extensions = Self::enumerate_instance_extension(library.entry());
+        let available_extensions = Self::enumerate_instance_extension(entry);
 
         // Compute the required extensions for the given instance version and requested extensions.
-        let required_extensions =
-            Self::compute_required_extensions(instance_version).combine(&available_extensions);
+        let required_extensions = Self::compute_required_extensions(instance_version);
 
         // If the required extensions are not available, panic.
         let missing_extensions = required_extensions.difference(&available_extensions);
@@ -83,21 +90,21 @@ impl Instance {
             );
         }
 
-        let enabled_extension_names = required_extensions
-            .to_vk()
-            .map(|name| name.as_ptr())
-            .collect::<Vec<_>>();
+        let enabled_extension_names = required_extensions.to_vk_ptr_names();
 
-        let application_info = vk::ApplicationInfo::default().api_version(Version::V1_3.to_vk());
+        let application_info = vk::ApplicationInfo::default()
+            .api_version(instance_version.to_vk())
+            .engine_name(c"Vislum Rendering Engine")
+            .engine_version(vk::API_VERSION_1_0);
 
         let create_info = vk::InstanceCreateInfo::default()
             .enabled_extension_names(&*enabled_extension_names)
             .application_info(&application_info);
 
-        let instance = unsafe { library.entry().create_instance(&create_info, None).unwrap() };
+        let instance = unsafe { library.ash_handle().create_instance(&create_info, None).unwrap() };
 
         let khr_surface = if extensions.khr_surface {
-            Some(ash::khr::surface::Instance::new(library.entry(), &instance))
+            Some(ash::khr::surface::Instance::new(library.ash_handle(), &instance))
         } else {
             None
         };
@@ -110,22 +117,25 @@ impl Instance {
     }
 
     #[inline]
-    pub fn instance(&self) -> &ash::Instance {
-        &self.instance
+    pub(crate) fn library(&self) -> &Arc<Library> {
+        &self.library
     }
 
     #[inline]
-    pub fn entry(&self) -> &ash::Entry {
-        self.library.entry()
+    pub(crate) fn ash_khr_surface_handle(&self) -> &ash::khr::surface::Instance {
+        self.khr_surface
+            .as_ref()
+            .expect("khr_surface extension not enabled")
     }
 
-    #[inline]
-    pub fn ash_khr_surface(&self) -> &ash::khr::surface::Instance {
-        self.khr_surface.as_ref().expect("khr_surface extension not enabled")
-    }
-
+    /// Enumerates the physical devices available on the instance.
+    ///
+    /// As a convenience, the minimal subset of extensions and features required by the the renderer
+    /// will be pre-filtered for the caller. But callers ultimately responsible for checking the
+    /// compatibility of the physical devices with the advanced features and extensions required
+    /// by the application.
     pub fn enumerate_physical_devices(self: &Arc<Self>) -> Vec<Arc<PhysicalDevice>> {
-        let raw_physical_devices = unsafe { self.instance().enumerate_physical_devices().unwrap() };
+        let raw_physical_devices = unsafe { self.ash_handle().enumerate_physical_devices().unwrap() };
 
         raw_physical_devices
             .into_iter()
@@ -133,11 +143,14 @@ impl Instance {
             .collect()
     }
 
-    fn try_enumerate_instance_version(library: &ash::Entry) -> Option<Version> {
+    /// Tries to enumerate the instance version.
+    ///
+    /// Fallback to V1.0 if the function is not available or has returned an error.
+    fn try_enumerate_instance_version(library: &ash::Entry) -> Version {
         match unsafe { library.try_enumerate_instance_version() } {
-            Ok(Some(version)) => Some(Version::from_vk(version)),
-            Ok(None) => None,
-            Err(result) => None,
+            Ok(Some(version)) => Version::from_vk(version),
+            Ok(None) => Version::V1_0,
+            Err(_) => Version::V1_0,
         }
     }
 

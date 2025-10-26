@@ -63,9 +63,11 @@ pub struct MemoryAllocator {
 impl MemoryAllocator {
     /// Creates a new memory allocator.
     pub fn new(device: Arc<Device>) -> Arc<Self> {
-        let vk_physical_device = device.physical_device().vk_handle();
+        let physical_device = device.physical_device();
+
+        let vk_physical_device = physical_device.vk_handle();
+        let ash_instance = physical_device.instance().ash_handle();
         let ash_device = device.ash_handle();
-        let ash_instance = device.physical_device().instance().ash_handle();
 
         let mut debug_settings = gpu_allocator::AllocatorDebugSettings::default();
         debug_settings.log_memory_information = true;
@@ -76,8 +78,8 @@ impl MemoryAllocator {
         debug_settings.log_stack_traces = true;
 
         let create_info = gpu_allocator::vulkan::AllocatorCreateDesc {
-            instance: ash_instance,
-            device: ash_device,
+            instance: ash_instance.clone(),
+            device: ash_device.clone(),
             physical_device: vk_physical_device,
             debug_settings,
             buffer_device_address: false,

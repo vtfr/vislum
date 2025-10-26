@@ -4,6 +4,10 @@ use ash::vk;
 
 use crate::{device::device::Device, AshHandle, VkHandle};
 
+/// A Vulkan semaphore.
+/// 
+/// # Safety
+/// The semaphore must be kept alive for the duration of all operations that use it.
 pub struct Semaphore {
     device: Arc<Device>,
     semaphore: vk::Semaphore,
@@ -19,7 +23,7 @@ impl VkHandle for Semaphore {
 }
 
 impl Semaphore {
-    pub fn new(device: Arc<Device>) -> Arc<Self> {
+    pub fn new(device: Arc<Device>) -> Self {
         let create_info = vk::SemaphoreCreateInfo::default();
 
         let semaphore = unsafe {
@@ -29,7 +33,7 @@ impl Semaphore {
                 .expect("Failed to create semaphore")
         };
 
-        Arc::new(Self { device, semaphore })
+        Self { device, semaphore }
     }
 }
 

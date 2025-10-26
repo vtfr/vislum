@@ -9,6 +9,7 @@ use crate::{
 };
 
 bitflags::bitflags! {
+    /// The usage flags for a buffer.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct BufferUsage: u8 {
         /// Can be used as source of fixed-function vertex fetch (VBO)

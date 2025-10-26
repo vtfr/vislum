@@ -28,14 +28,12 @@ impl VkHandle for ShaderModule {
 
 impl ShaderModule {
     pub fn new(device: Arc<Device>, code: &[u8]) -> Arc<Self> {
-        let code_aligned = unsafe {
-            std::slice::from_raw_parts(
-                code.as_ptr() as *const u32,
-                code.len() / std::mem::size_of::<u32>(),
-            )
-        };
+        let code = code
+            .chunks(4)
+            .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect::<Vec<_>>();
 
-        let create_info = vk::ShaderModuleCreateInfo::default().code(code_aligned);
+        let create_info = vk::ShaderModuleCreateInfo::default().code(&code);
 
         let module = unsafe {
             device

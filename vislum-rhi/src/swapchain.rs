@@ -4,19 +4,18 @@ use ash::vk;
 use smallvec::SmallVec;
 
 use crate::{
-    AshHandle, VkHandle,
-    device::device::Device,
-    image::{
+    Error, VkHandle, WithContext, device::device::Device, image::{
         Extent2D, Extent3D, Image, ImageCreateInfo, ImageDimensions, ImageFormat, ImageView,
         ImageViewCreateInfo,
-    },
-    surface::Surface,
+    }, surface::Surface
 };
+
+pub type PresentMode = vk::PresentModeKHR;
 
 pub struct SwapchainCreateInfo {
     pub extent: Extent2D,
     pub format: ImageFormat,
-    pub present_mode: vk::PresentModeKHR,
+    pub present_mode: PresentMode,
 }
 
 impl Default for SwapchainCreateInfo {
@@ -55,7 +54,7 @@ impl Swapchain {
         device: Arc<Device>,
         surface: &Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> Arc<Self> {
+    ) -> Result<Arc<Self>, Error> {
         let vk_create_info = vk::SwapchainCreateInfoKHR::default()
             .surface(surface.vk_handle())
             .min_image_count(3)
@@ -74,14 +73,14 @@ impl Swapchain {
             device
                 .ash_khr_swapchain()
                 .create_swapchain(&vk_create_info, None)
-                .expect("Failed to create swapchain")
+                .with_context("failed to create swapchain")?
         };
 
         let images = unsafe {
             device
                 .ash_khr_swapchain()
                 .get_swapchain_images(swapchain)
-                .expect("Failed to get swapchain images")
+                .with_context("failed to get swapchain images")?
         };
 
         let images: SmallVec<[Image; 3]> = images
@@ -117,14 +116,14 @@ impl Swapchain {
             })
             .collect();
 
-        Arc::new(Self {
+        Ok(Arc::new(Self {
             device,
             swapchain,
             images,
             views,
             format: create_info.format,
             extent: create_info.extent,
-        })
+        }))
     }
 
     #[inline]
@@ -132,6 +131,9 @@ impl Swapchain {
         &self.device
     }
 
+    /// Acquires the next image from the swapchain.
+    ///
+    /// Returns the index of the image if it was acquired successfully, otherwise `None`.
     pub fn acquire_next_image(&self, semaphore: vk::Semaphore) -> Option<u32> {
         unsafe {
             self.device
