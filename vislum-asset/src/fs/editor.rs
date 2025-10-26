@@ -7,7 +7,9 @@ use notify_debouncer_full::{
 };
 
 use crate::{
-    asset::InternalAssetEvent, fs::{Bytes, Fs, ReadError}, path::AssetPath
+    asset::InternalAssetEvent,
+    fs::{Bytes, Fs, ReadError},
+    path::AssetPath,
 };
 
 /// A filesystem implementation for the editor.
@@ -20,10 +22,7 @@ impl EditorFs {
     pub fn new(root_path: std::path::PathBuf, event_tx: Sender<InternalAssetEvent>) -> Self {
         let watcher = Watcher::new(root_path.clone(), event_tx);
 
-        Self {
-            root_path,
-            watcher,
-        }
+        Self { root_path, watcher }
     }
 }
 
@@ -31,7 +30,7 @@ impl Fs for EditorFs {
     fn read(&self, path: &AssetPath) -> Result<Bytes, ReadError> {
         // Convert AssetPath to filesystem path
         let fs_path = self.root_path.join(path.path());
-        
+
         match std::fs::read(&fs_path) {
             Ok(data) => Ok(Bytes::new_owned(data)),
             Err(_) => Err(ReadError::NotFound),
@@ -46,10 +45,7 @@ pub(crate) struct Watcher {
 }
 
 impl Watcher {
-    pub fn new(
-        root_path: std::path::PathBuf,
-        event_tx: Sender<InternalAssetEvent>,
-    ) -> Self {
+    pub fn new(root_path: std::path::PathBuf, event_tx: Sender<InternalAssetEvent>) -> Self {
         let mut debouncer = {
             let root_path = root_path.clone();
 

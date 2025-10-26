@@ -146,10 +146,7 @@ impl AssetManager {
     pub fn ready(&self) -> bool {
         let shared = self.shared.lock().unwrap();
 
-        shared
-            .database
-            .iter()
-            .all(|(_, entry)| entry.loaded())
+        shared.database.iter().all(|(_, entry)| entry.loaded())
     }
 
     /// Adds a virtual filesystem entry to the asset manager.

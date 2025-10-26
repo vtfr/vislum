@@ -82,16 +82,17 @@ pub trait WithContext<T> {
     }
 
     fn with_context_fn<F, S>(self, context: F) -> Result<T, Error>
-    where 
+    where
         F: FnOnce() -> S,
         S: Into<Cow<'static, str>>;
 }
 
 impl<T> WithContext<T> for Result<T, ash::vk::Result> {
     fn with_context_fn<F, S>(self, context: F) -> Result<T, Error>
-    where 
+    where
         F: FnOnce() -> S,
-        S: Into<Cow<'static, str>> {
+        S: Into<Cow<'static, str>>,
+    {
         self.map_err(|result| Error::Vulkan {
             context: context().into(),
             result,

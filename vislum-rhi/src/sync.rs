@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{device::device::Device, AshHandle, VkHandle};
+use crate::{AshHandle, VkHandle, device::device::Device};
 
 /// A Vulkan semaphore.
-/// 
+///
 /// # Safety
 /// The semaphore must be kept alive for the duration of all operations that use it.
 pub struct Semaphore {
@@ -107,4 +107,3 @@ impl Drop for Fence {
         }
     }
 }
-

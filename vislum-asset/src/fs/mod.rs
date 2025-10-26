@@ -18,7 +18,7 @@ pub enum ReadError {
 /// A trait for filesystem operations.
 pub trait Fs: Send + Sync {
     /// Reads a file from the filesystem.
-    /// 
+    ///
     /// Implementations must resolve the path to a valid file path.
     fn read(&self, path: &AssetPath) -> Result<Bytes, ReadError>;
 

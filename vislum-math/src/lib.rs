@@ -37,7 +37,7 @@ macro_rules! impl_vector {
 
         impl Add for $ident {
             type Output = Self;
-            
+
             fn add(self, rhs: Self) -> Self::Output {
                 Self { inner: self.inner + rhs.inner }
             }
@@ -51,7 +51,7 @@ macro_rules! impl_vector {
 
         impl Sub for $ident {
             type Output = Self;
-            
+
             fn sub(self, rhs: Self) -> Self::Output {
                 Self { inner: self.inner - rhs.inner }
             }
@@ -99,19 +99,9 @@ pub struct Matrix4 {
 }
 
 impl Matrix4 {
-    pub fn new(
-        col1: Vector4,
-        col2: Vector4,
-        col3: Vector4,
-        col4: Vector4,
-    ) -> Self {
-        Self { 
-            inner: cgmath::Matrix4::from_cols(
-                col1.into(),
-                col2.into(),
-                col3.into(),
-                col4.into(),
-            )
+    pub fn new(col1: Vector4, col2: Vector4, col3: Vector4, col4: Vector4) -> Self {
+        Self {
+            inner: cgmath::Matrix4::from_cols(col1.into(), col2.into(), col3.into(), col4.into()),
         }
     }
 }
@@ -120,7 +110,7 @@ impl std::ops::Add for Matrix4 {
 
     fn add(self, rhs: Self) -> Self::Output {
         Self {
-            inner: self.inner + rhs.inner
+            inner: self.inner + rhs.inner,
         }
     }
 }
@@ -136,7 +126,7 @@ impl std::ops::Sub for Matrix4 {
 
     fn sub(self, rhs: Self) -> Self::Output {
         Self {
-            inner: self.inner - rhs.inner
+            inner: self.inner - rhs.inner,
         }
     }
 }
@@ -152,7 +142,7 @@ impl std::ops::Mul for Matrix4 {
 
     fn mul(self, rhs: Self) -> Self::Output {
         Self {
-            inner: self.inner * rhs.inner
+            inner: self.inner * rhs.inner,
         }
     }
 }
@@ -162,7 +152,7 @@ impl std::ops::Mul<Vector4> for Matrix4 {
 
     fn mul(self, rhs: Vector4) -> Self::Output {
         Vector4 {
-            inner: self.inner * rhs.inner
+            inner: self.inner * rhs.inner,
         }
     }
 }
@@ -172,7 +162,7 @@ impl std::ops::Mul<f32> for Matrix4 {
 
     fn mul(self, rhs: f32) -> Self::Output {
         Self {
-            inner: self.inner * rhs
+            inner: self.inner * rhs,
         }
     }
 }
@@ -186,7 +176,7 @@ impl std::ops::MulAssign<f32> for Matrix4 {
 impl Default for Matrix4 {
     fn default() -> Self {
         Self {
-            inner: cgmath::Matrix4::identity()
+            inner: cgmath::Matrix4::identity(),
         }
     }
 }

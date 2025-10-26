@@ -2,7 +2,11 @@ use std::any::Any;
 
 use thiserror::Error;
 
-use crate::{compile::{InputDefinition, OutputDefinition}, node::{InputId, OutputId}, value::TaggedValue};
+use crate::{
+    compile::{InputDefinition, OutputDefinition},
+    node::{InputId, OutputId},
+    value::TaggedValue,
+};
 
 /// An erased slot.
 pub enum ErasedSlot {
@@ -14,7 +18,6 @@ pub enum Placement {
     End,
 }
 
-
 #[derive(Debug, Error)]
 pub enum SetSlotError {
     #[error("Output '{0}' not found")]
@@ -23,7 +26,7 @@ pub enum SetSlotError {
 
 pub trait IntrospectInput {
     /// Retrieve the number of slots.
-    /// 
+    ///
     /// For a [`Single`] input, this is always 1.
     /// For a [`Multi`] input, this is the number of current slots.
     fn slots_len(&self) -> usize;
@@ -32,7 +35,7 @@ pub trait IntrospectInput {
     fn get_slot(&self, placement: Placement) -> Option<&ErasedSlot>;
 
     /// Sets the slot at the given placement.
-    /// 
+    ///
     /// ## Safety
     /// Some validations are performed on the slot, but the caller is responsible for ensuring that
     /// the change is compatible with the input definition.
@@ -55,7 +58,7 @@ pub trait Introspect {
     fn inputs_len(&self) -> usize;
 
     /// Retrieve the input of a node.
-    /// 
+    ///
     /// Returns `None` if the input is not found.
     fn get_input(&self, input_id: InputId) -> Option<&dyn IntrospectInput>;
 
@@ -66,17 +69,17 @@ pub trait Introspect {
     fn outputs_len(&self) -> usize;
 
     /// Retrieve the output of a node.
-    /// 
+    ///
     /// Returns `None` if the output is not found.
     fn get_output_value(&self, output_id: OutputId) -> Option<OutputValue>;
 
     /// Retrieve the input definition for an input.
-    /// 
+    ///
     /// Returns `None` if the input is not found.
     fn get_input_definition(&self, input_id: InputId) -> Option<&InputDefinition>;
-    
+
     /// Retrieve the output definition for an output.
-    /// 
+    ///
     /// Returns `None` if the output is not found.
     fn get_output_definition(&self, output_id: OutputId) -> Option<&OutputDefinition>;
 
@@ -110,7 +113,7 @@ impl IntrospectInput for DynamicInput {
                 self.slots.push(slot);
             }
         }
-        
+
         Ok(())
     }
 }

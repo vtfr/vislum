@@ -3,10 +3,9 @@ use std::sync::Arc;
 use ash::vk;
 
 use crate::{
-    AshHandle, VkHandle,
+    AshHandle, Error, VkHandle, WithContext,
     device::device::Device,
     memory::allocator::{AllocationDescription, MemoryAllocation, MemoryAllocator, MemoryLocation},
-    Error, WithContext,
 };
 
 bitflags::bitflags! {

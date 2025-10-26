@@ -2,20 +2,16 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 // Static regex patterns compiled once
-static INCLUDE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"#include\s+"([^"]+)""#).unwrap()
-});
+static INCLUDE_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"#include\s+"([^"]+)""#).unwrap());
 
-static IFDEF_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"#ifdef\s+([A-Z_]+)").unwrap()
-});
-
+static IFDEF_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#ifdef\s+([A-Z_]+)").unwrap());
 
 /// Attempts to parse an include directive from the line.
 fn maybe_parse_include(line: &str) -> Option<&str> {
     match INCLUDE_REGEX.captures(line) {
         Some(caps) => Some(caps.get(1).unwrap().as_str()),
-        None => None
+        None => None,
     }
 }
 
@@ -23,7 +19,7 @@ fn maybe_parse_include(line: &str) -> Option<&str> {
 fn maybe_parse_ifdef(line: &str) -> Option<&str> {
     match IFDEF_REGEX.captures(line) {
         Some(caps) => Some(caps.get(1).unwrap().as_str()),
-        None => None
+        None => None,
     }
 }
 
@@ -59,12 +55,12 @@ impl<'a> Directive<'a> {
 
         match maybe_parse_include(line) {
             Some(include_path) => return Some(Directive::Include(include_path)),
-            None => {},
+            None => {}
         }
 
         match maybe_parse_ifdef(line) {
             Some(identifier) => return Some(Directive::IfDef(identifier)),
-            None => {},
+            None => {}
         }
 
         None
@@ -72,12 +68,11 @@ impl<'a> Directive<'a> {
 }
 
 /// Collects all the include directives from a given source.
-/// 
+///
 /// Includes are collected as is, without any validation on their contents.
 /// Callers are responsible for validating the paths are appropriate.
 pub fn collect_includes(source: &str) -> impl Iterator<Item = &str> {
-    source.lines()
-        .filter_map(maybe_parse_include)
+    source.lines().filter_map(maybe_parse_include)
 }
 
 #[cfg(test)]

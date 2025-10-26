@@ -34,8 +34,8 @@ impl WgpuState {
                 force_fallback_adapter: false,
             })
             .await?;
-        
-                let (device, queue) = adapter
+
+        let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
                 required_features: wgpu::Features::empty(),
@@ -56,7 +56,9 @@ impl WgpuState {
         // Shader code in this tutorial assumes an sRGB surface texture. Using a different
         // one will result in all the colors coming out darker. If you want to support non
         // sRGB surfaces, you'll need to account for that when drawing to the frame.
-        let surface_format = surface_caps.formats.iter()
+        let surface_format = surface_caps
+            .formats
+            .iter()
             .find(|f| f.is_srgb())
             .copied()
             .unwrap_or(surface_caps.formats[0]);
@@ -70,7 +72,7 @@ impl WgpuState {
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
-        }; 
+        };
 
         surface.configure(&device, &config);
 

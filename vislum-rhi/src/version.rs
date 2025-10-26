@@ -26,7 +26,11 @@ impl Version {
     pub const V1_3: Self = Self::new(1, 3, 0);
 
     pub const fn new(major: u32, minor: u32, patch: u32) -> Self {
-        Self { major, minor, patch }
+        Self {
+            major,
+            minor,
+            patch,
+        }
     }
 
     pub const fn to_vk(&self) -> u32 {

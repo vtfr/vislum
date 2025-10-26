@@ -293,4 +293,3 @@ impl ImageFormat {
         })
     }
 }
-

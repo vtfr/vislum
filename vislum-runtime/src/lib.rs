@@ -1,7 +1,9 @@
 use vislum_op::system::NodeGraphSystem;
-use vislum_render::{MeshManager, RenderPassCollector, SceneManager, ShaderManager, TextureManager};
 use vislum_render::types::{RenderDevice, RenderQueue};
-use vislum_system::{ResMut, Res, Resource, Resources};
+use vislum_render::{
+    MeshManager, RenderPassCollector, SceneManager, ShaderManager, TextureManager,
+};
+use vislum_system::{Res, ResMut, Resource, Resources};
 
 /// A runner runs the runtime.
 pub type Runner = Box<dyn Fn(&mut Engine)>;

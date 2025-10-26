@@ -10,8 +10,16 @@ pub struct IntrospectView<'a> {
 }
 
 impl<'a> IntrospectView<'a> {
-    pub fn new(graph: &'a GraphBlueprint, node_id: NodeId, dispatcher: &'a dyn CommandDispatcher) -> Self {
-        Self { dispatcher, node_id, graph }
+    pub fn new(
+        graph: &'a GraphBlueprint,
+        node_id: NodeId,
+        dispatcher: &'a dyn CommandDispatcher,
+    ) -> Self {
+        Self {
+            dispatcher,
+            node_id,
+            graph,
+        }
     }
 
     pub fn ui(mut self, ui: &mut egui::Ui) {

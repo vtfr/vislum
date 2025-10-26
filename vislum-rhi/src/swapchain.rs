@@ -4,10 +4,13 @@ use ash::vk;
 use smallvec::SmallVec;
 
 use crate::{
-    Error, VkHandle, WithContext, device::device::Device, image::{
+    Error, VkHandle, WithContext,
+    device::device::Device,
+    image::{
         Extent2D, Extent3D, Image, ImageCreateInfo, ImageDimensions, ImageFormat, ImageView,
         ImageViewCreateInfo,
-    }, surface::Surface
+    },
+    surface::Surface,
 };
 
 pub type PresentMode = vk::PresentModeKHR;

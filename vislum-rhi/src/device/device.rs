@@ -84,10 +84,9 @@ impl Device {
             .queue_family_index(0)
             .queue_priorities(&queue_priorities);
 
-        let create_info =
-            vk::DeviceCreateInfo::default()
-                .enabled_extension_names(&*enabled_extension_names)
-                .queue_create_infos(std::slice::from_ref(&queue_create_info));
+        let create_info = vk::DeviceCreateInfo::default()
+            .enabled_extension_names(&*enabled_extension_names)
+            .queue_create_infos(std::slice::from_ref(&queue_create_info));
 
         let mut ffi = DevicePhysicalFeaturesFFI::default();
         let create_info = ffi.wire_to_device_create_info(
@@ -105,7 +104,10 @@ impl Device {
         };
 
         let khr_swapchain = if enabled_extensions.khr_swapchain {
-            Some(ash::khr::swapchain::Device::new(instance.ash_handle(), &device))
+            Some(ash::khr::swapchain::Device::new(
+                instance.ash_handle(),
+                &device,
+            ))
         } else {
             None
         };
@@ -119,7 +121,9 @@ impl Device {
 
     #[inline]
     pub fn ash_khr_swapchain(&self) -> &ash::khr::swapchain::Device {
-        self.khr_swapchain.as_ref().expect("khr_swapchain extension not enabled")
+        self.khr_swapchain
+            .as_ref()
+            .expect("khr_swapchain extension not enabled")
     }
 }
 

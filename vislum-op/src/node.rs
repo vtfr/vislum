@@ -3,16 +3,21 @@ use std::{collections::HashMap, rc::Rc};
 use thiserror::Error;
 use vislum_math::{Vector2, Vector2I};
 
-use crate::{compile::OutputDefinition, new_uuid_type, node_type::{InputCardinality, InputDefinition, NodeType}, value::TaggedValue};
+use crate::{
+    compile::OutputDefinition,
+    new_uuid_type,
+    node_type::{InputCardinality, InputDefinition, NodeType},
+    value::TaggedValue,
+};
 
 pub type OutputId = usize;
 pub type InputId = usize;
 
-new_uuid_type!{
+new_uuid_type! {
     pub struct NodeId;
 }
 
-new_uuid_type!{
+new_uuid_type! {
     pub struct GraphId;
 }
 
@@ -46,7 +51,9 @@ impl InputBlueprint {
     pub fn connected_to(&self, node_id: NodeId) -> bool {
         match self {
             InputBlueprint::Connection(connection) => connection.node_id == node_id,
-            InputBlueprint::ConnectionVec(connections) => connections.iter().any(|connection| connection.node_id == node_id),
+            InputBlueprint::ConnectionVec(connections) => connections
+                .iter()
+                .any(|connection| connection.node_id == node_id),
             InputBlueprint::Constant(_) | InputBlueprint::Unset => false,
         }
     }
@@ -86,7 +93,8 @@ impl NodeBlueprint {
     ///
     /// Returns an error if the input does not exist.
     pub fn get_input(&self, input_id: InputId) -> Result<&InputBlueprint, NodeError> {
-        self.inputs.get(input_id)
+        self.inputs
+            .get(input_id)
             .ok_or(NodeError::InputNotFound(input_id))
     }
 
@@ -97,7 +105,7 @@ impl NodeBlueprint {
 
     /// Assigns a constant value to an input.
     pub fn assign_constant(
-        &mut self, 
+        &mut self,
         input_id: InputId,
         value: TaggedValue,
     ) -> Result<(), NodeError> {
@@ -118,10 +126,10 @@ impl NodeBlueprint {
     }
 
     /// Assigns a connection to an input.
-    /// 
+    ///
     /// Connections are validated in the Graph.
     pub fn assign_connection(
-        &mut self, 
+        &mut self,
         input_id: InputId,
         placement: ConnectionPlacement,
         connection: Connection,
@@ -144,9 +152,7 @@ impl NodeBlueprint {
             InputCardinality::Multiple => {
                 let mut connections = match input {
                     // If the input is a connection, upcast it to a connection vec.
-                    InputBlueprint::ConnectionVec(connections) => {
-                        connections.clone()
-                    }
+                    InputBlueprint::ConnectionVec(connections) => connections.clone(),
                     InputBlueprint::Connection(connection) => {
                         vec![*connection]
                     }
@@ -176,32 +182,44 @@ impl NodeBlueprint {
         }
     }
 
-    pub fn get_input_with_def(&self, input_id: InputId) -> Result<(&InputBlueprint, &InputDefinition), NodeError> {
-        let input_def = self.node_type
+    pub fn get_input_with_def(
+        &self,
+        input_id: InputId,
+    ) -> Result<(&InputBlueprint, &InputDefinition), NodeError> {
+        let input_def = self
+            .node_type
             .get_input(input_id)
             .ok_or(NodeError::InputNotFound(input_id))?;
 
-        let input = self.inputs.get(input_id)
+        let input = self
+            .inputs
+            .get(input_id)
             .ok_or(NodeError::InputNotFound(input_id))?;
 
         Ok((input, input_def))
     }
 
-    fn get_input_mut_with_def(&mut self, input_id: InputId) -> Result<(&mut InputBlueprint, &InputDefinition), NodeError> {
-        let input_def = self.node_type
+    fn get_input_mut_with_def(
+        &mut self,
+        input_id: InputId,
+    ) -> Result<(&mut InputBlueprint, &InputDefinition), NodeError> {
+        let input_def = self
+            .node_type
             .get_input(input_id)
             .ok_or(NodeError::InputNotFound(input_id))?;
 
-        let input = self.inputs.get_mut(input_id)
+        let input = self
+            .inputs
+            .get_mut(input_id)
             .ok_or(NodeError::InputNotFound(input_id))?;
 
         Ok((input, input_def))
     }
-    
+
     pub fn inputs(&self) -> impl Iterator<Item = (&InputBlueprint, &InputDefinition)> {
         self.inputs.iter().zip(self.node_type.inputs.iter())
     }
-    
+
     pub fn outputs(&self) -> impl Iterator<Item = &OutputDefinition> {
         self.node_type.outputs.iter()
     }
@@ -252,9 +270,9 @@ impl GraphBlueprint {
     }
 
     pub fn connect(
-        &mut self, 
-        node_id: NodeId, 
-        input_id: InputId, 
+        &mut self,
+        node_id: NodeId,
+        input_id: InputId,
         placement: ConnectionPlacement,
         connection: Connection,
     ) -> Result<(), GraphError> {
@@ -268,10 +286,9 @@ impl GraphBlueprint {
 
         // Unwrap is safe because we checked that the connection is valid, therefore all
         // nodes are guaranteed to exist.
-        let node = self.nodes.get_mut(&node_id)
-            .unwrap();
+        let node = self.nodes.get_mut(&node_id).unwrap();
 
-        // Safety: we validated the connection. 
+        // Safety: we validated the connection.
         //
         // Value types are guaranteed to be compatible. Still, better safe than sorry.
         match node.assign_connection(input_id, placement, connection) {
@@ -284,12 +301,14 @@ impl GraphBlueprint {
     }
 
     pub fn assign_constant(
-        &mut self, 
-        node_id: NodeId, 
-        input_id: InputId, 
+        &mut self,
+        node_id: NodeId,
+        input_id: InputId,
         value: TaggedValue,
     ) -> Result<(), GraphError> {
-        let node = self.nodes.get_mut(&node_id)
+        let node = self
+            .nodes
+            .get_mut(&node_id)
             .ok_or(GraphError::NodeNotFound(node_id))?;
 
         match node.assign_constant(input_id, value) {
@@ -303,9 +322,13 @@ impl GraphBlueprint {
 
     /// Checks if a connection can be from to an input.
     pub fn can_connect(&self, node_id: NodeId, input_id: InputId, connection: Connection) -> bool {
-
         #[inline(always)]
-        fn can_connect_inner(graph: &GraphBlueprint, node_id: NodeId, input_id: InputId, connection: Connection) -> Option<()> {
+        fn can_connect_inner(
+            graph: &GraphBlueprint,
+            node_id: NodeId,
+            input_id: InputId,
+            connection: Connection,
+        ) -> Option<()> {
             let input_node = graph.nodes.get(&node_id)?;
             let input_def = input_node.node_type().get_input(input_id)?;
 
@@ -327,8 +350,12 @@ impl GraphBlueprint {
 
         can_connect_inner(self, node_id, input_id, connection).is_some()
     }
-    
-    pub fn update_node_positions_with_offset(&mut self, node_ids: impl Iterator<Item = NodeId>, offset: Vector2I) {
+
+    pub fn update_node_positions_with_offset(
+        &mut self,
+        node_ids: impl Iterator<Item = NodeId>,
+        offset: Vector2I,
+    ) {
         for node_id in node_ids {
             if let Some(node) = self.nodes.get_mut(&node_id) {
                 node.position += offset;
@@ -355,15 +382,12 @@ pub enum GraphError {
     InputNotFound(NodeId, InputId),
 
     #[error("Node error: {node_id:?}: {error}")]
-    NodeError {
-        node_id: NodeId,
-        error: NodeError,
-    },
+    NodeError { node_id: NodeId, error: NodeError },
 
     #[error("Invalid connection: {node_id:?}: {input_id:?}: {connection:?}")]
-    InvalidConnection { 
-        node_id: NodeId, 
-        input_id: InputId, 
+    InvalidConnection {
+        node_id: NodeId,
+        input_id: InputId,
         connection: Connection,
     },
 }

@@ -1,31 +1,33 @@
 extern crate self as vislum_op;
 
-pub mod value;
-pub mod node_type;
-pub mod node;
-pub mod types;
 pub mod compile;
 pub mod eval;
-pub mod system;
 pub mod introspect;
+pub mod node;
+pub mod node_type;
+pub mod system;
+pub mod types;
+pub mod value;
 
 pub mod prelude {
     pub use crate::bundle;
 
     pub use crate::node::{
-        Connection, ConnectionPlacement, InputBlueprint, NodeBlueprint, NodeId, OutputId, GraphBlueprint, GraphError,
-        NodeError,
+        Connection, ConnectionPlacement, GraphBlueprint, GraphError, InputBlueprint, NodeBlueprint,
+        NodeError, NodeId, OutputId,
     };
 
-    pub use crate::eval::{Node, Eval};
+    pub use crate::eval::{Eval, Node};
 
-    pub use crate::compile::{CompileInput, GetInputDefinition, GetOutputDefinition, CompileNode, CompilationContext};
+    pub use crate::compile::{
+        CompilationContext, CompileInput, CompileNode, GetInputDefinition, GetOutputDefinition,
+    };
 
     pub use crate::node_type::{
-        InputDefinition, NodeType, NodeTypeRegistry, OutputDefinition, NodeTypeId,
+        InputDefinition, NodeType, NodeTypeId, NodeTypeRegistry, OutputDefinition,
     };
 
-    pub use crate::value::{TaggedValue, SValueTypeInfo, Value};
+    pub use crate::value::{SValueTypeInfo, TaggedValue, Value};
 
     pub use vislum_op_macros::Node;
 }

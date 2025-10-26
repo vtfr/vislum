@@ -1,14 +1,20 @@
 use std::collections::HashSet;
 
 use vislum_math::Vector2I;
-use vislum_op::{prelude::{NodeId, NodeTypeId}, system::NodeGraphSystem};
+use vislum_op::{
+    prelude::{NodeId, NodeTypeId},
+    system::NodeGraphSystem,
+};
 
-use crate::{command::{merge_same, Command}, editor::Editor};
+use crate::{
+    command::{Command, merge_same},
+    editor::Editor,
+};
 
 /// Updates the positions of the given nodes.
 pub struct UpdateNodePositions {
     pub node_ids: HashSet<NodeId>,
-    pub delta: (f32, f32)
+    pub delta: (f32, f32),
 }
 
 impl Command for UpdateNodePositions {
@@ -17,20 +23,21 @@ impl Command for UpdateNodePositions {
     }
 
     fn merge(&mut self, previous: Box<dyn Command>) -> Result<(), Box<dyn Command>> {
-        merge_same::<Self>(self, previous, 
+        merge_same::<Self>(
+            self,
+            previous,
             // Can merge if the node ids are the same.
-            |command, previous| {
-                command.node_ids == previous.node_ids
-            },
+            |command, previous| command.node_ids == previous.node_ids,
             // Merge the deltas.
             |command, previous| {
                 command.delta = (
                     command.delta.0 + previous.delta.0,
-                    command.delta.1 + previous.delta.1
+                    command.delta.1 + previous.delta.1,
                 );
-        })
+            },
+        )
     }
-    
+
     fn undoable(&self) -> bool {
         true
     }
@@ -71,7 +78,7 @@ impl Command for AddNodeCommand {
 
 pub struct MoveNodesCommand {
     pub node_ids: HashSet<NodeId>,
-    pub delta: Vector2I
+    pub delta: Vector2I,
 }
 
 impl Command for MoveNodesCommand {
@@ -83,13 +90,13 @@ impl Command for MoveNodesCommand {
     }
 
     fn merge(&mut self, previous: Box<dyn Command>) -> Result<(), Box<dyn Command>> {
-        merge_same::<Self>(self, previous, 
-            |command, previous| {
-                command.node_ids == previous.node_ids
-            },
+        merge_same::<Self>(
+            self,
+            previous,
+            |command, previous| command.node_ids == previous.node_ids,
             |command, previous| {
                 command.delta += previous.delta;
-            }
+            },
         )
     }
 

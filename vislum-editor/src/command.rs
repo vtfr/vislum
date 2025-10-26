@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use downcast_rs::{impl_downcast, Downcast};
+use downcast_rs::{Downcast, impl_downcast};
 
 use crate::editor::Editor;
 
@@ -33,7 +33,7 @@ pub fn merge_same<T: Command>(
     merge: impl FnOnce(&mut T, T),
 ) -> Result<(), Box<dyn Command>> {
     let previous = previous.downcast::<T>()?;
-    
+
     if !can_merge(command, &*previous) {
         return Err(previous);
     }
@@ -50,9 +50,9 @@ pub trait CommandDispatcher {
 impl dyn CommandDispatcher {
     /// Dispatch a command of type `T`.
     #[inline]
-    pub fn dispatch<T>(&self, command: T) 
-    where 
-        T: Command + 'static
+    pub fn dispatch<T>(&self, command: T)
+    where
+        T: Command + 'static,
     {
         self.dispatch_dyn(Box::new(command));
     }
@@ -66,7 +66,6 @@ struct Undo {
 pub struct History {
     undo_stack: Vec<Undo>,
     queue: RefCell<Vec<Box<dyn Command>>>,
-
 }
 
 impl History {
@@ -74,7 +73,7 @@ impl History {
     pub fn add(&self, command: Box<dyn Command>) {
         self.queue.borrow_mut().push(command);
     }
-    
+
     pub fn process_commands(&mut self, editor: &mut Editor) {
         let mut queue = self.queue.borrow_mut();
 
@@ -88,9 +87,9 @@ impl History {
                     Ok(_) => {
                         // Merge successful. Push the new command to the undo stack.
                         self.undo_stack.push(Undo { command: command });
-                    },
+                    }
                     Err(previous) => {
-                        // Cannot merge the commands. 
+                        // Cannot merge the commands.
                         //
                         // Re-add the previous command to the undo stack.
                         self.undo_stack.push(Undo { command: previous });
@@ -99,7 +98,7 @@ impl History {
 
                         // Push the new command to the undo stack.
                         self.undo_stack.push(Undo { command: command });
-                    },
+                    }
                 }
             } else {
                 self.undo_stack.push(Undo { command: command });

@@ -1,6 +1,6 @@
+use slotmap::SlotMap;
 use std::collections::HashSet;
 use std::{collections::HashMap, sync::Arc};
-use slotmap::SlotMap;
 
 use crate::asset::{Asset, AssetId};
 use crate::path::AssetPath;
@@ -50,7 +50,7 @@ pub enum AssetState {
 pub struct AssetDatabase {
     /// The slotmap storing all assets by their ID.
     assets: SlotMap<AssetId, AssetDatabaseEntry>,
-    
+
     /// Path to AssetId mapping for quick lookups.
     path_to_id: HashMap<AssetPath, AssetId>,
 }
@@ -82,7 +82,7 @@ impl AssetDatabase {
 
         // Insert into slotmap and get ID
         let id = self.assets.insert(entry);
-        
+
         // Update path mapping
         self.path_to_id.insert(path, id);
 
@@ -95,7 +95,12 @@ impl AssetDatabase {
     }
 
     /// Updates an asset to the loaded state.
-    pub fn set_asset_loaded(&mut self, id: AssetId, asset: Arc<dyn Asset>, dependencies: HashSet<AssetPath>) {
+    pub fn set_asset_loaded(
+        &mut self,
+        id: AssetId,
+        asset: Arc<dyn Asset>,
+        dependencies: HashSet<AssetPath>,
+    ) {
         if let Some(entry) = self.assets.get_mut(id) {
             entry.state = AssetState::Loaded(asset);
             entry.dependencies = dependencies;

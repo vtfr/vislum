@@ -4,7 +4,7 @@ macro_rules! impl_extensions {
         $(#[$attr:meta])*
         $vis:vis struct $ident:ident {
             $(
-                $(#[$field_meta:meta])* 
+                $(#[$field_meta:meta])*
                 $field_vis:vis $field_ident:ident = $ext_path:path
             ),*
             $(,)?
@@ -47,11 +47,11 @@ macro_rules! impl_extensions {
             }
 
             /// Convert the extensions to a vector of pointer to the extension names.
-            /// 
+            ///
             /// # Safety
             /// The returned pointers are valid for the entire lifetime of the application,
             /// as they are obtained from constant [`&'static std::ffi::CStr`] extension names
-            /// in ash. 
+            /// in ash.
             pub fn to_vk_ptr_names(&self) -> Vec<*const std::ffi::c_char> {
                 self.to_vk()
                     .map(|ext| ext.as_ptr())

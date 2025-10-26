@@ -3,8 +3,8 @@ use std::sync::Arc;
 use ash::vk;
 
 use crate::{
-    AshHandle, VkHandle, device::physical::PhysicalDevice, impl_extensions, version::Version,
-    Error, WithContext,
+    AshHandle, Error, VkHandle, WithContext, device::physical::PhysicalDevice, impl_extensions,
+    version::Version,
 };
 
 pub struct Library {
@@ -22,14 +22,11 @@ impl AshHandle for Library {
 
 impl Library {
     pub fn new() -> Result<Arc<Self>, Error> {
-        let entry = unsafe { ash::Entry::load() }
-            .map_err(|_| Error::Vulkan {
-                context: "failed to load vulkan entry".into(),
-                result: ash::vk::Result::ERROR_INITIALIZATION_FAILED,
-            })?;
-        Ok(Arc::new(Self {
-            inner: entry,
-        }))
+        let entry = unsafe { ash::Entry::load() }.map_err(|_| Error::Vulkan {
+            context: "failed to load vulkan entry".into(),
+            result: ash::vk::Result::ERROR_INITIALIZATION_FAILED,
+        })?;
+        Ok(Arc::new(Self { inner: entry }))
     }
 }
 
@@ -85,14 +82,18 @@ impl Instance {
         let available_extensions = Self::enumerate_instance_extension(entry);
 
         // Compute the required extensions for the given instance version and requested extensions.
-        let required_extensions = Self::compute_required_extensions(instance_version)
-            .combine(&extensions);
+        let required_extensions =
+            Self::compute_required_extensions(instance_version).combine(&extensions);
 
         // If the required extensions are not available, return error.
         let missing_extensions = required_extensions.difference(&available_extensions);
         if !missing_extensions.is_empty() {
             return Err(Error::Vulkan {
-                context: format!("required extensions are not available: {:?}", missing_extensions).into(),
+                context: format!(
+                    "required extensions are not available: {:?}",
+                    missing_extensions
+                )
+                .into(),
                 result: vk::Result::ERROR_EXTENSION_NOT_PRESENT,
             });
         }
@@ -108,11 +109,18 @@ impl Instance {
             .enabled_extension_names(&*enabled_extension_names)
             .application_info(&application_info);
 
-        let instance = unsafe { library.ash_handle().create_instance(&create_info, None)
-            .with_context("failed to create vulkan instance")? };
+        let instance = unsafe {
+            library
+                .ash_handle()
+                .create_instance(&create_info, None)
+                .with_context("failed to create vulkan instance")?
+        };
 
         let khr_surface = if extensions.khr_surface {
-            Some(ash::khr::surface::Instance::new(library.ash_handle(), &instance))
+            Some(ash::khr::surface::Instance::new(
+                library.ash_handle(),
+                &instance,
+            ))
         } else {
             None
         };
@@ -143,8 +151,11 @@ impl Instance {
     /// compatibility of the physical devices with the advanced features and extensions required
     /// by the application.
     pub fn enumerate_physical_devices(self: &Arc<Self>) -> Result<Vec<Arc<PhysicalDevice>>, Error> {
-        let raw_physical_devices = unsafe { self.ash_handle().enumerate_physical_devices()
-            .with_context("failed to enumerate physical devices")? };
+        let raw_physical_devices = unsafe {
+            self.ash_handle()
+                .enumerate_physical_devices()
+                .with_context("failed to enumerate physical devices")?
+        };
 
         Ok(raw_physical_devices
             .into_iter()

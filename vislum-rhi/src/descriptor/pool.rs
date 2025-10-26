@@ -23,7 +23,9 @@ impl Default for DescriptorPoolCreateInfo {
                 (DescriptorType::UniformBufferDynamic, 1000),
                 (DescriptorType::StorageBufferDynamic, 1000),
                 (DescriptorType::InputAttachment, 1000),
-            ].into_iter().collect()
+            ]
+            .into_iter()
+            .collect(),
         }
     }
 }
@@ -70,7 +72,7 @@ impl DescriptorPool {
     }
 
     /// Allocates multiple descriptor sets from the pool.
-    /// 
+    ///
     /// # Safety
     /// This was designed around the assumption that we'll only have a few descriptor sets in the
     /// entire application, and these are allocated in the same thread as the descriptor pool was
@@ -95,7 +97,8 @@ impl DescriptorPool {
                 .expect("Failed to allocate descriptor set")
         };
 
-        layouts.into_iter()
+        layouts
+            .into_iter()
             .zip(sets.into_iter())
             .map(|(layout, set)| DescriptorSet {
                 pool: self.clone(),
@@ -114,4 +117,3 @@ impl Drop for DescriptorPool {
         }
     }
 }
-

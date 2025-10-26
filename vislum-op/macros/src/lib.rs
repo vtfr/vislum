@@ -1,9 +1,9 @@
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
 
+mod introspect;
 mod node;
 mod value;
-mod introspect;
 
 #[proc_macro_derive(Value, attributes(value))]
 pub fn derive_value(input: TokenStream) -> TokenStream {

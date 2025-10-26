@@ -1,6 +1,9 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Attribute, DeriveInput, Expr, Field, Ident, Lit, LitStr, Meta, Type, parse::Parser, punctuated::Punctuated};
+use syn::{
+    Attribute, DeriveInput, Expr, Field, Ident, Lit, LitStr, Meta, Type, parse::Parser,
+    punctuated::Punctuated,
+};
 
 struct Input<'a> {
     pub ident: &'a Ident,
@@ -23,7 +26,7 @@ impl InputAttributes {
                 return Err(syn::Error::new_spanned(
                     attr,
                     "Invalid syntax in #[input(...)] attribute",
-                ))
+                ));
             }
             Meta::List(meta_list) => meta_list,
         };
@@ -42,14 +45,20 @@ impl InputAttributes {
                 let value: Expr = meta.require_list()?.parse_args()?;
                 default = Some(value);
             } else if meta.path().is_ident("assignment") {
-                let value: Punctuated<Ident, syn::Token![|]> = meta.require_list()?
-                    .parse_args_with(Punctuated::<Ident, syn::Token![|]>::parse_separated_nonempty)?;
+                let value: Punctuated<Ident, syn::Token![|]> =
+                    meta.require_list()?.parse_args_with(
+                        Punctuated::<Ident, syn::Token![|]>::parse_separated_nonempty,
+                    )?;
 
                 assignments = value.into_iter().collect();
             }
         }
 
-        Ok(Self { name, default, assignments })
+        Ok(Self {
+            name,
+            default,
+            assignments,
+        })
     }
 }
 
@@ -104,7 +113,7 @@ impl OutputAttributes {
                 return Err(syn::Error::new_spanned(
                     attr,
                     "Invalid syntax in #[output(...)] attribute",
-                ))
+                ));
             }
             Meta::List(meta_list) => meta_list,
         };
@@ -173,7 +182,7 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
             return Err(syn::Error::new_spanned(
                 &input,
                 "Reflect derive macro only supports structs",
-            ))
+            ));
         }
     };
 
@@ -183,58 +192,63 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
     let operator_type_id = ident.to_string();
 
     // Generate input initializations using the helper function
-    let input_compilers = inputs
-        .iter()
-        .enumerate()
-        .map(|(index, input)| {
-            let ident = input.ident;
-            let ty = input.ty;
+    let input_compilers = inputs.iter().enumerate().map(|(index, input)| {
+        let ident = input.ident;
+        let ty = input.ty;
 
-            quote! {
-                #ident: <#ty as vislum_op::compile::CompileInput>::compile_input(ctx, node, #index)?
-            }
-        });
+        quote! {
+            #ident: <#ty as vislum_op::compile::CompileInput>::compile_input(ctx, node, #index)?
+        }
+    });
 
-    let input_definitions = inputs.iter()
-        .map(|input| {
-            let ty = input.ty;
-            let name = input.attrs.name.clone()
-                .map(|name| name.value())
-                .unwrap_or_else(|| input.ident.to_string());
+    let input_definitions = inputs.iter().map(|input| {
+        let ty = input.ty;
+        let name = input
+            .attrs
+            .name
+            .clone()
+            .map(|name| name.value())
+            .unwrap_or_else(|| input.ident.to_string());
 
-            let assignments = if input.attrs.assignments.is_empty() {
-                quote! { vislum_op::node_type::AssignmentTypes::ALL }
-            } else {
-                let assignments = input.attrs.assignments
-                    .iter()
-                    .map(|assignment| quote! { vislum_op::node_type::AssignmentTypes::#assignment });
+        let assignments = if input.attrs.assignments.is_empty() {
+            quote! { vislum_op::node_type::AssignmentTypes::ALL }
+        } else {
+            let assignments =
+                input.attrs.assignments.iter().map(
+                    |assignment| quote! { vislum_op::node_type::AssignmentTypes::#assignment },
+                );
 
-                quote! { #(#assignments)|* }
-            };
+            quote! { #(#assignments)|* }
+        };
 
-            quote! {
-                <#ty as vislum_op::compile::GetInputDefinition>::get_input_definition(
-                    #name,
-                    #assignments,
-                )
-            }
-        });
+        quote! {
+            <#ty as vislum_op::compile::GetInputDefinition>::get_input_definition(
+                #name,
+                #assignments,
+            )
+        }
+    });
 
-    let output_definition = outputs.iter()
-        .map(|output| {
-            let ty = output.ty;
-            let name = output.attrs.name.clone()
-                .map(|name| name.value())
-                .unwrap_or_else(|| output.ident.to_string());
+    let output_definition = outputs.iter().map(|output| {
+        let ty = output.ty;
+        let name = output
+            .attrs
+            .name
+            .clone()
+            .map(|name| name.value())
+            .unwrap_or_else(|| output.ident.to_string());
 
-            quote! {
-                <#ty as vislum_op::compile::GetOutputDefinition>::get_output_definition(#name)
-            }
-        });
+        quote! {
+            <#ty as vislum_op::compile::GetOutputDefinition>::get_output_definition(#name)
+        }
+    });
 
     let outputs_len = outputs.len();
     let output_indexes = (0..outputs_len).map(|index| quote! { #index });
-    let output_idents = outputs.iter().map(|output| output.ident).collect::<Vec<_>>();
+    let output_idents = outputs
+        .iter()
+        .map(|output| output.ident)
+        .collect::<Vec<_>>();
     let state_idents = states.iter().map(|state| state.ident);
 
     let result = quote! {
@@ -276,7 +290,7 @@ pub fn derive_node_impl(input: DeriveInput) -> syn::Result<TokenStream> {
         }
 
         /// Blanked implementaton.
-        /// 
+        ///
         /// Ensures the [`Eval`] trait has been implemented.
         #[automatically_derived]
         impl vislum_op::eval::Node for #ident {}

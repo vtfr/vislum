@@ -128,7 +128,9 @@ impl<'a> NodeView<'a> {
         });
 
         // Track the rect of the node.
-        self.element_positioning.node_rects.insert(self.node_id, response.response.rect);
+        self.element_positioning
+            .node_rects
+            .insert(self.node_id, response.response.rect);
 
         NodeResponse {
             node_id: self.node_id,
@@ -187,10 +189,16 @@ impl<'a> NodeView<'a> {
                         let response = pin_ui(ui, &definition.value_type);
 
                         // Track the rect of the pin.
-                        self.element_positioning.node_input_virtual_slot_rects.insert(
-                            NodeInputVirtualSlotKey::new(self.node_id, input_index, ConnectionPlacement::End),
-                            response.rect,
-                        );
+                        self.element_positioning
+                            .node_input_virtual_slot_rects
+                            .insert(
+                                NodeInputVirtualSlotKey::new(
+                                    self.node_id,
+                                    input_index,
+                                    ConnectionPlacement::End,
+                                ),
+                                response.rect,
+                            );
 
                         let _ = Label::new(&definition.name)
                             .selectable(false)
@@ -216,7 +224,7 @@ impl<'a> NodeView<'a> {
                         .ui(ui);
 
                     let response = pin_ui(ui, &output.value_type);
-                    
+
                     // Track the rect of the pin.
                     self.element_positioning.node_output_rects.insert(
                         NodeOutputKey::new(self.node_id, output_index),

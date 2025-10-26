@@ -3,9 +3,7 @@ use std::{ffi::CString, sync::Arc};
 use ash::vk;
 
 use crate::{
-    AshHandle, VkHandle,
-    descriptor::DescriptorSetLayout,
-    device::device::Device,
+    AshHandle, VkHandle, descriptor::DescriptorSetLayout, device::device::Device,
     image::ImageFormat,
 };
 
@@ -70,7 +68,7 @@ impl GraphicsPipeline {
         // Vertex input
         let binding_descriptions;
         let attribute_descriptions;
-        
+
         let vertex_input_state = if let Some(vertex_buffer) = &create_info.vertex_buffer {
             binding_descriptions = vec![
                 vk::VertexInputBindingDescription::default()
@@ -137,8 +135,8 @@ impl GraphicsPipeline {
             })
             .collect();
 
-        let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default()
-            .attachments(&color_blend_attachments);
+        let color_blend_state =
+            vk::PipelineColorBlendStateCreateInfo::default().attachments(&color_blend_attachments);
 
         // Dynamic state
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
@@ -152,8 +150,7 @@ impl GraphicsPipeline {
             .map(|layout| layout.vk_handle())
             .collect();
 
-        let layout_create_info =
-            vk::PipelineLayoutCreateInfo::default().set_layouts(&set_layouts);
+        let layout_create_info = vk::PipelineLayoutCreateInfo::default().set_layouts(&set_layouts);
 
         let layout = unsafe {
             device
@@ -169,8 +166,8 @@ impl GraphicsPipeline {
             .map(|f| f.to_vk())
             .collect();
 
-        let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(&color_formats);
+        let mut rendering_info =
+            vk::PipelineRenderingCreateInfo::default().color_attachment_formats(&color_formats);
 
         if let Some(depth_format) = create_info.depth_format {
             rendering_info = rendering_info.depth_attachment_format(depth_format.to_vk());
@@ -222,4 +219,3 @@ impl Drop for GraphicsPipeline {
         }
     }
 }
-

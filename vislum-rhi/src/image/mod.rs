@@ -26,5 +26,5 @@ pub type Rect2D = vk::Rect2D;
 pub enum ImageDimensions {
     D1,
     D2,
-    D3
+    D3,
 }

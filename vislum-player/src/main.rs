@@ -6,11 +6,13 @@ use vislum_op::{
     prelude::*,
     system::NodeGraphSystem,
 };
-use vislum_render::{Handle, MeshManager, RenderPassCollector, SceneManager, ScreenRenderTarget, TextureManager};
-use vislum_render::texture::{Texture, TextureDescriptor, TextureFormat};
-use vislum_render::scene::{Scene, SceneCommand, SceneObject};
 use vislum_render::mesh::{MeshDescriptor, Vertex};
 use vislum_render::pass::{ForwardRenderPass, ScreenBlitPass};
+use vislum_render::scene::{Scene, SceneCommand, SceneObject};
+use vislum_render::texture::{Texture, TextureDescriptor, TextureFormat};
+use vislum_render::{
+    Handle, MeshManager, RenderPassCollector, SceneManager, ScreenRenderTarget, TextureManager,
+};
 use vislum_runtime::Runtime;
 use winit::{
     application::ApplicationHandler,
@@ -60,36 +62,49 @@ impl Player {
 impl Player {
     fn render(&self) {
         // Request a redraw of the window
-        let PlayerState::Ready { window, wgpu, runtime, testing_data } = &self.state else { return };
-            // Request a redraw of the window for the next frame
-            window.request_redraw();
-        
-            // Get the current texture
-            let current_texture = wgpu.surface.get_current_texture().unwrap();
-            let view = current_texture
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default());
+        let PlayerState::Ready {
+            window,
+            wgpu,
+            runtime,
+            testing_data,
+        } = &self.state
+        else {
+            return;
+        };
+        // Request a redraw of the window for the next frame
+        window.request_redraw();
 
-            let mut render_pass_collector = runtime.get_resource_mut::<RenderPassCollector>();
-            
-            // Do render the scene.
-            // render_pass_collector.add_pass(Arc::new(ForwardRenderPass { 
-            //     scene: testing_data.scene.clone(), 
-            //     color_texture: testing_data.render_texture.clone(),
-            // }));
+        // Get the current texture
+        let current_texture = wgpu.surface.get_current_texture().unwrap();
+        let view = current_texture
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-            render_pass_collector.add_pass(Arc::new(ForwardRenderPass { 
-                scene: testing_data.scene.clone(), 
-                color: testing_data.render_texture.clone(),
-            }));
-            render_pass_collector.add_pass(Arc::new(ScreenBlitPass::new(testing_data.render_texture.clone())));
-            render_pass_collector.render(&runtime.resources, &ScreenRenderTarget {
+        let mut render_pass_collector = runtime.get_resource_mut::<RenderPassCollector>();
+
+        // Do render the scene.
+        // render_pass_collector.add_pass(Arc::new(ForwardRenderPass {
+        //     scene: testing_data.scene.clone(),
+        //     color_texture: testing_data.render_texture.clone(),
+        // }));
+
+        render_pass_collector.add_pass(Arc::new(ForwardRenderPass {
+            scene: testing_data.scene.clone(),
+            color: testing_data.render_texture.clone(),
+        }));
+        render_pass_collector.add_pass(Arc::new(ScreenBlitPass::new(
+            testing_data.render_texture.clone(),
+        )));
+        render_pass_collector.render(
+            &runtime.resources,
+            &ScreenRenderTarget {
                 view,
                 format: current_texture.texture.format(),
-            });
+            },
+        );
 
-            // Present the texture.
-            current_texture.present();
+        // Present the texture.
+        current_texture.present();
     }
 }
 
@@ -126,18 +141,21 @@ impl ApplicationHandler<PlayerEvent> for Player {
 
             let mesh = mesh_manager.create(MeshDescriptor {
                 vertices: vec![
-                    Vertex { position: [-0.5, -0.5, 0.0] },
-                    Vertex { position: [0.5, -0.5, 0.0] }, 
-                    Vertex { position: [0.0, 0.5, 0.0] }
+                    Vertex {
+                        position: [-0.5, -0.5, 0.0],
+                    },
+                    Vertex {
+                        position: [0.5, -0.5, 0.0],
+                    },
+                    Vertex {
+                        position: [0.0, 0.5, 0.0],
+                    },
                 ],
                 indices: vec![0, 1, 2],
             });
 
-            let scene = scene_manager.create_with_commands(vec![
-                SceneCommand::AddObject(SceneObject {
-                    mesh,
-                }),
-            ]);
+            let scene = scene_manager
+                .create_with_commands(vec![SceneCommand::AddObject(SceneObject { mesh })]);
 
             drop(texture_manager);
             drop(mesh_manager);

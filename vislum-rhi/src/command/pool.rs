@@ -67,7 +67,7 @@ impl CommandPool {
     }
 
     /// Allocates `count` command buffers from the pool.
-    /// 
+    ///
     /// # Safety
     /// This was designed around the assumption that we'll only have one command buffer per frame.
     /// There are thousands of crazy vulkan rules that we're skipping for now.

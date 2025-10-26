@@ -1,11 +1,11 @@
 use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use crate::{
-    node::{InputBlueprint, InputId, NodeBlueprint, NodeId, OutputId}, 
-    node_type::{AssignmentTypes, InputCardinality}, 
-    prelude::{InputDefinition, OutputDefinition}, 
+    compile::{CompilationContext, CompileInput, GetInputDefinition, GetOutputDefinition},
+    node::{InputBlueprint, InputId, NodeBlueprint, NodeId, OutputId},
+    node_type::{AssignmentTypes, InputCardinality},
+    prelude::{InputDefinition, OutputDefinition},
     value::{TaggedValue, Value},
-    compile::{CompileInput, GetInputDefinition, GetOutputDefinition, CompilationContext},
 };
 
 pub struct EvalConnection {
@@ -14,19 +14,17 @@ pub struct EvalConnection {
 }
 
 impl EvalConnection {
-    pub fn eval<T>(&self, ctx: &EvalContext) -> Result<T, EvalError> 
-    where 
+    pub fn eval<T>(&self, ctx: &EvalContext) -> Result<T, EvalError>
+    where
         T: Value,
     {
         self.node.eval(ctx)?;
 
         let output = self.node.get_output(self.output_id);
         match output {
-            Some(output) => {
-                match T::try_from(output) {
-                    Ok(output) => Ok(output),
-                    Err(_) => unreachable!(),
-                }
+            Some(output) => match T::try_from(output) {
+                Ok(output) => Ok(output),
+                Err(_) => unreachable!(),
             },
             None => Err(EvalError::NoOutput {
                 node_id: self.node.node_id,
@@ -42,48 +40,53 @@ pub enum Single<T> {
     Connection(EvalConnection),
 }
 
-impl<T> Single<T> 
-where 
+impl<T> Single<T>
+where
     T: Value,
 {
     pub fn eval(&self, ctx: &EvalContext) -> Result<T, EvalError> {
         match self {
             Single::Constant(value) => Ok(value.clone()),
-            Single::Connection(connection) => {
-                connection.eval::<T>(ctx)
-            }
+            Single::Connection(connection) => connection.eval::<T>(ctx),
         }
     }
 }
 
 impl<T> CompileInput for Single<T>
-where 
+where
     T: Value,
 {
-    fn compile_input(ctx: &mut CompilationContext, node: &NodeBlueprint, input_id: InputId) -> Result<Self, ()> {
+    fn compile_input(
+        ctx: &mut CompilationContext,
+        node: &NodeBlueprint,
+        input_id: InputId,
+    ) -> Result<Self, ()> {
         match node.get_input(input_id) {
-            Ok(InputBlueprint::Constant(value)) => Ok(Single::Constant(T::try_from(value.clone()).unwrap())),
+            Ok(InputBlueprint::Constant(value)) => {
+                Ok(Single::Constant(T::try_from(value.clone()).unwrap()))
+            }
             Ok(InputBlueprint::Connection(connection)) => {
                 let node = ctx.compile_node(connection.node_id)?;
 
-                Ok(Single::Connection(EvalConnection { node, output_id: connection.output_id }))
-            },
+                Ok(Single::Connection(EvalConnection {
+                    node,
+                    output_id: connection.output_id,
+                }))
+            }
             _ => Err(()),
         }
     }
 }
 
 impl<T> GetInputDefinition for Single<T>
-where 
+where
     T: Value,
 {
-    fn get_input_definition(name: impl Into<String>, assignment_types: AssignmentTypes) -> InputDefinition {
-        InputDefinition::new(
-            name, 
-            &T::INFO, 
-            InputCardinality::Single, 
-            assignment_types,
-        )
+    fn get_input_definition(
+        name: impl Into<String>,
+        assignment_types: AssignmentTypes,
+    ) -> InputDefinition {
+        InputDefinition::new(name, &T::INFO, InputCardinality::Single, assignment_types)
     }
 }
 
@@ -94,28 +97,31 @@ pub struct Multiple<T> {
 }
 
 impl<T> Multiple<T>
-where 
+where
     T: Value,
 {
     pub fn eval(&self, ctx: &EvalContext) -> Result<Vec<T>, EvalError> {
-        self.values.iter()
+        self.values
+            .iter()
             .map(|connection| connection.eval::<T>(ctx))
             .collect()
     }
 }
 
 impl<T> CompileInput for Multiple<T>
-where 
+where
     T: Value,
 {
-    fn compile_input(ctx: &mut CompilationContext, node: &NodeBlueprint, input_id: InputId) -> Result<Self, ()> {
+    fn compile_input(
+        ctx: &mut CompilationContext,
+        node: &NodeBlueprint,
+        input_id: InputId,
+    ) -> Result<Self, ()> {
         let connection_blueprints = match node.get_input(input_id) {
             Ok(InputBlueprint::Connection(connection)) => {
                 vec![*connection]
-            },
-            Ok(InputBlueprint::ConnectionVec(connections)) => {
-                connections.clone()
-            },
+            }
+            Ok(InputBlueprint::ConnectionVec(connections)) => connections.clone(),
             _ => return Err(()),
         };
 
@@ -123,22 +129,28 @@ where
         for blueprint in connection_blueprints {
             let node = ctx.compile_node(blueprint.node_id)?;
 
-            connections.push(EvalConnection { node, output_id: blueprint.output_id });
+            connections.push(EvalConnection {
+                node,
+                output_id: blueprint.output_id,
+            });
         }
 
-        Ok(Multiple { values: connections, phantom: PhantomData })
+        Ok(Multiple {
+            values: connections,
+            phantom: PhantomData,
+        })
     }
 }
 
 impl<T> GetInputDefinition for Multiple<T>
-where 
+where
     T: Value,
 {
     fn get_input_definition(name: impl Into<String>, _: AssignmentTypes) -> InputDefinition {
         InputDefinition::new(
-            name, 
-            &T::INFO, 
-            InputCardinality::Multiple, 
+            name,
+            &T::INFO,
+            InputCardinality::Multiple,
             AssignmentTypes::CONNECTION,
         )
     }
@@ -153,7 +165,7 @@ pub struct Output<T> {
 }
 
 impl<T> Output<T>
-where 
+where
     T: Value,
 {
     pub fn set(&mut self, value: T) {
@@ -163,14 +175,12 @@ where
 
 impl<T> Default for Output<T> {
     fn default() -> Self {
-        Self {
-            value: None,
-        }
+        Self { value: None }
     }
 }
 
 impl<T> GetOutputValue for Output<T>
-where 
+where
     T: Value,
 {
     fn get_output_value(&self) -> Option<TaggedValue> {
@@ -178,8 +188,8 @@ where
     }
 }
 
-impl<T> GetOutputDefinition for Output<T> 
-where 
+impl<T> GetOutputDefinition for Output<T>
+where
     T: Value,
 {
     fn get_output_definition(name: impl Into<String>) -> OutputDefinition {
@@ -191,7 +201,7 @@ where
 pub struct EvalContext;
 
 /// A cell for an evaluatable node.
-/// 
+///
 /// Handles internal mutability of the node.
 #[derive(Clone)]
 pub struct NodeRef {

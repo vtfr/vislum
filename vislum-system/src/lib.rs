@@ -4,7 +4,7 @@ use std::any::{Any, TypeId};
 use std::cell::{Ref, RefCell, RefMut, UnsafeCell};
 use std::collections::HashMap;
 
-// pub mod event; 
+// pub mod event;
 // pub mod system;
 
 // Re-export the System macro.
@@ -149,8 +149,8 @@ impl Resources {
     /// Gets a resource by type, inserting a default resource if it is not found.
     pub fn get_or_insert_with<T, F>(&self, f: F) -> Res<'_, T>
     where
-        T: Resource, 
-        F: FnOnce() -> T
+        T: Resource,
+        F: FnOnce() -> T,
     {
         // SAFETY: We only insert a new resource if it is not found, so no borrows to the
         // previous resource can be invalidated (as the resource does not exist). Moreover, the
@@ -167,8 +167,8 @@ impl Resources {
     /// Gets a mutable resource by type, inserting a default resource if it is not found.
     pub fn get_mut_or_insert_with<T, F>(&self, f: F) -> ResMut<'_, T>
     where
-        T: Resource, 
-        F: FnOnce() -> T
+        T: Resource,
+        F: FnOnce() -> T,
     {
         // SAFETY: We only insert a new resource if it is not found, so no borrows to the
         // previous resource can be invalidated (as the resource does not exist). Moreover, the

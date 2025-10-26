@@ -3,7 +3,10 @@ use std::sync::Arc;
 use ash::vk;
 
 use crate::{
-    AshHandle, VkHandle, device::device::Device, image::{Extent3D, ImageDimensions}, memory::allocator::{AllocationDescription, MemoryAllocation, MemoryAllocator, MemoryLocation}
+    AshHandle, VkHandle,
+    device::device::Device,
+    image::{Extent3D, ImageDimensions},
+    memory::allocator::{AllocationDescription, MemoryAllocation, MemoryAllocator, MemoryLocation},
 };
 
 use super::{ImageFormat, ImageLayout};
@@ -32,9 +35,7 @@ impl Default for ImageCreateInfo {
 }
 
 enum ImageOwner {
-    Owned {
-        allocation: MemoryAllocation,
-    },
+    Owned { allocation: MemoryAllocation },
     Swapchain,
 }
 
@@ -109,9 +110,7 @@ impl Image {
         Arc::new(Self {
             device,
             image,
-            owner: ImageOwner::Owned {
-                allocation,
-            },
+            owner: ImageOwner::Owned { allocation },
             dimensions: create_info.dimensions,
             extent: create_info.extent,
             format: create_info.format,

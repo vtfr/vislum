@@ -1,7 +1,7 @@
 pub mod asset;
+pub mod database;
 pub mod fs;
 pub mod loader;
-pub mod path;
 pub mod manager;
-pub mod database;
+pub mod path;
 pub mod vfs;

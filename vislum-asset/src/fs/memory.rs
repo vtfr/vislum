@@ -1,6 +1,9 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::{fs::{Bytes, Fs, ReadError}, path::AssetPath};
+use crate::{
+    fs::{Bytes, Fs, ReadError},
+    path::AssetPath,
+};
 
 /// A filesystem implementation that stores files that are embedded in the binary.
 pub struct MemoryFs {
@@ -9,7 +12,9 @@ pub struct MemoryFs {
 
 impl MemoryFs {
     pub fn new() -> Self {
-        Self { files: HashMap::new() }
+        Self {
+            files: HashMap::new(),
+        }
     }
 }
 

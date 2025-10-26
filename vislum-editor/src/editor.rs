@@ -2,7 +2,10 @@ use eframe::egui;
 use vislum_op::system::NodeGraphSystem;
 use vislum_runtime::Runtime;
 
-use crate::{command::History, graph::{GraphView, GraphViewContext}};
+use crate::{
+    command::History,
+    graph::{GraphView, GraphViewContext},
+};
 
 pub struct Editor {
     pub graph_view: GraphView,
@@ -13,8 +16,12 @@ pub struct Editor {
 impl Editor {
     pub fn new(_cc: &eframe::CreationContext) -> Self {
         let runtime = Runtime::new();
-        runtime.get_resource_mut::<NodeGraphSystem>().register_node_types::<vislum_op_std::Std>();
-        runtime.get_resource_mut::<NodeGraphSystem>().add_node("MultiplyFloats");
+        runtime
+            .get_resource_mut::<NodeGraphSystem>()
+            .register_node_types::<vislum_op_std::Std>();
+        runtime
+            .get_resource_mut::<NodeGraphSystem>()
+            .add_node("MultiplyFloats");
 
         Self {
             runtime,

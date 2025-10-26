@@ -75,17 +75,21 @@ impl LoadContext {
             .unwrap();
 
         // Get the loader reference
-        let loader = self.loaders.find_by_extension(ext)
+        let loader = self
+            .loaders
+            .find_by_extension(ext)
             .ok_or(LoadError::NoLoaderFound)?;
-        
+
         let result = loader.load(self)?;
-        
+
         Ok(result)
     }
 
     /// Reads an asset from the filesystem.
     pub fn read(&mut self, path: &AssetPath) -> Result<Bytes, LoadError> {
-        let resolved_path = self.virtual_fs.resolve(path)
+        let resolved_path = self
+            .virtual_fs
+            .resolve(path)
             .ok_or(LoadError::ReadError(ReadError::NotFound))?;
 
         let bytes = resolved_path.fs.read(&resolved_path.path)?;

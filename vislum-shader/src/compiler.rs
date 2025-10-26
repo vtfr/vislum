@@ -61,13 +61,23 @@ impl ShaderReflector {
 
         // Validate SPIRV data
         if spirv_bytes.len() < 4 {
-            return Err(ReflectorError::InvalidSpirv("SPIRV data too short".to_string()));
+            return Err(ReflectorError::InvalidSpirv(
+                "SPIRV data too short".to_string(),
+            ));
         }
 
         // Check SPIRV magic number
-        let magic = u32::from_le_bytes([spirv_bytes[0], spirv_bytes[1], spirv_bytes[2], spirv_bytes[3]]);
+        let magic = u32::from_le_bytes([
+            spirv_bytes[0],
+            spirv_bytes[1],
+            spirv_bytes[2],
+            spirv_bytes[3],
+        ]);
         if magic != 0x07230203 {
-            return Err(ReflectorError::InvalidSpirv(format!("Invalid SPIRV magic number: 0x{:08X}", magic)));
+            return Err(ReflectorError::InvalidSpirv(format!(
+                "Invalid SPIRV magic number: 0x{:08X}",
+                magic
+            )));
         }
 
         // Convert bytes to words for spirv-cross2
@@ -82,7 +92,8 @@ impl ShaderReflector {
             .map_err(|e| ReflectorError::CompilerCreationFailed(e.to_string()))?;
 
         // Extract entry points
-        let entry_points = compiler.entry_points()
+        let entry_points = compiler
+            .entry_points()
             .map_err(|e| ReflectorError::EntryPointEnumerationFailed(e.to_string()))?
             .into_iter()
             .map(|ep| EntryPoint {
@@ -92,32 +103,44 @@ impl ShaderReflector {
             .collect();
 
         // Extract shader resources
-        let resources = compiler.shader_resources()
+        let resources = compiler
+            .shader_resources()
             .map_err(|e| ReflectorError::ResourceEnumerationFailed(e.to_string()))?;
 
         // Extract descriptor sets
         let mut descriptor_sets = Vec::new();
-        let mut sets: std::collections::HashMap<u32, Vec<DescriptorBinding>> = std::collections::HashMap::new();
+        let mut sets: std::collections::HashMap<u32, Vec<DescriptorBinding>> =
+            std::collections::HashMap::new();
 
         // Process sampled images
-        if let Ok(sampled_images) = resources.resources_for_type(spirv_cross2::reflect::ResourceType::SampledImage) {
+        if let Ok(sampled_images) =
+            resources.resources_for_type(spirv_cross2::reflect::ResourceType::SampledImage)
+        {
             for resource in sampled_images {
-                let set = compiler.decoration(resource.id, spirv_cross2::spirv::Decoration::DescriptorSet)
+                let set = compiler
+                    .decoration(resource.id, spirv_cross2::spirv::Decoration::DescriptorSet)
                     .map_err(|e| ReflectorError::DecorationFailed(e.to_string()))?
                     .and_then(|d| match d {
                         spirv_cross2::reflect::DecorationValue::Literal(s) => Some(s),
                         _ => None,
                     })
-                    .ok_or_else(|| ReflectorError::DecorationFailed("Descriptor set decoration not found".to_string()))?;
-                
-                let binding = compiler.decoration(resource.id, spirv_cross2::spirv::Decoration::Binding)
+                    .ok_or_else(|| {
+                        ReflectorError::DecorationFailed(
+                            "Descriptor set decoration not found".to_string(),
+                        )
+                    })?;
+
+                let binding = compiler
+                    .decoration(resource.id, spirv_cross2::spirv::Decoration::Binding)
                     .map_err(|e| ReflectorError::DecorationFailed(e.to_string()))?
                     .and_then(|d| match d {
                         spirv_cross2::reflect::DecorationValue::Literal(b) => Some(b),
                         _ => None,
                     })
-                    .ok_or_else(|| ReflectorError::DecorationFailed("Binding decoration not found".to_string()))?;
-                
+                    .ok_or_else(|| {
+                        ReflectorError::DecorationFailed("Binding decoration not found".to_string())
+                    })?;
+
                 let desc_binding = DescriptorBinding {
                     binding,
                     name: resource.name.to_string(),
@@ -130,24 +153,34 @@ impl ShaderReflector {
         }
 
         // Process storage images
-        if let Ok(storage_images) = resources.resources_for_type(spirv_cross2::reflect::ResourceType::StorageImage) {
+        if let Ok(storage_images) =
+            resources.resources_for_type(spirv_cross2::reflect::ResourceType::StorageImage)
+        {
             for resource in storage_images {
-                let set = compiler.decoration(resource.id, spirv_cross2::spirv::Decoration::DescriptorSet)
+                let set = compiler
+                    .decoration(resource.id, spirv_cross2::spirv::Decoration::DescriptorSet)
                     .map_err(|e| ReflectorError::DecorationFailed(e.to_string()))?
                     .and_then(|d| match d {
                         spirv_cross2::reflect::DecorationValue::Literal(s) => Some(s),
                         _ => None,
                     })
-                    .ok_or_else(|| ReflectorError::DecorationFailed("Descriptor set decoration not found".to_string()))?;
-                
-                let binding = compiler.decoration(resource.id, spirv_cross2::spirv::Decoration::Binding)
+                    .ok_or_else(|| {
+                        ReflectorError::DecorationFailed(
+                            "Descriptor set decoration not found".to_string(),
+                        )
+                    })?;
+
+                let binding = compiler
+                    .decoration(resource.id, spirv_cross2::spirv::Decoration::Binding)
                     .map_err(|e| ReflectorError::DecorationFailed(e.to_string()))?
                     .and_then(|d| match d {
                         spirv_cross2::reflect::DecorationValue::Literal(b) => Some(b),
                         _ => None,
                     })
-                    .ok_or_else(|| ReflectorError::DecorationFailed("Binding decoration not found".to_string()))?;
-                
+                    .ok_or_else(|| {
+                        ReflectorError::DecorationFailed("Binding decoration not found".to_string())
+                    })?;
+
                 let desc_binding = DescriptorBinding {
                     binding,
                     name: resource.name.to_string(),
@@ -160,24 +193,34 @@ impl ShaderReflector {
         }
 
         // Process uniform buffers
-        if let Ok(uniform_buffers) = resources.resources_for_type(spirv_cross2::reflect::ResourceType::UniformBuffer) {
+        if let Ok(uniform_buffers) =
+            resources.resources_for_type(spirv_cross2::reflect::ResourceType::UniformBuffer)
+        {
             for resource in uniform_buffers {
-                let set = compiler.decoration(resource.id, spirv_cross2::spirv::Decoration::DescriptorSet)
+                let set = compiler
+                    .decoration(resource.id, spirv_cross2::spirv::Decoration::DescriptorSet)
                     .map_err(|e| ReflectorError::DecorationFailed(e.to_string()))?
                     .and_then(|d| match d {
                         spirv_cross2::reflect::DecorationValue::Literal(s) => Some(s),
                         _ => None,
                     })
-                    .ok_or_else(|| ReflectorError::DecorationFailed("Descriptor set decoration not found".to_string()))?;
-                
-                let binding = compiler.decoration(resource.id, spirv_cross2::spirv::Decoration::Binding)
+                    .ok_or_else(|| {
+                        ReflectorError::DecorationFailed(
+                            "Descriptor set decoration not found".to_string(),
+                        )
+                    })?;
+
+                let binding = compiler
+                    .decoration(resource.id, spirv_cross2::spirv::Decoration::Binding)
                     .map_err(|e| ReflectorError::DecorationFailed(e.to_string()))?
                     .and_then(|d| match d {
                         spirv_cross2::reflect::DecorationValue::Literal(b) => Some(b),
                         _ => None,
                     })
-                    .ok_or_else(|| ReflectorError::DecorationFailed("Binding decoration not found".to_string()))?;
-                
+                    .ok_or_else(|| {
+                        ReflectorError::DecorationFailed("Binding decoration not found".to_string())
+                    })?;
+
                 let desc_binding = DescriptorBinding {
                     binding,
                     name: resource.name.to_string(),
@@ -190,24 +233,34 @@ impl ShaderReflector {
         }
 
         // Process storage buffers
-        if let Ok(storage_buffers) = resources.resources_for_type(spirv_cross2::reflect::ResourceType::StorageBuffer) {
+        if let Ok(storage_buffers) =
+            resources.resources_for_type(spirv_cross2::reflect::ResourceType::StorageBuffer)
+        {
             for resource in storage_buffers {
-                let set = compiler.decoration(resource.id, spirv_cross2::spirv::Decoration::DescriptorSet)
+                let set = compiler
+                    .decoration(resource.id, spirv_cross2::spirv::Decoration::DescriptorSet)
                     .map_err(|e| ReflectorError::DecorationFailed(e.to_string()))?
                     .and_then(|d| match d {
                         spirv_cross2::reflect::DecorationValue::Literal(s) => Some(s),
                         _ => None,
                     })
-                    .ok_or_else(|| ReflectorError::DecorationFailed("Descriptor set decoration not found".to_string()))?;
-                
-                let binding = compiler.decoration(resource.id, spirv_cross2::spirv::Decoration::Binding)
+                    .ok_or_else(|| {
+                        ReflectorError::DecorationFailed(
+                            "Descriptor set decoration not found".to_string(),
+                        )
+                    })?;
+
+                let binding = compiler
+                    .decoration(resource.id, spirv_cross2::spirv::Decoration::Binding)
                     .map_err(|e| ReflectorError::DecorationFailed(e.to_string()))?
                     .and_then(|d| match d {
                         spirv_cross2::reflect::DecorationValue::Literal(b) => Some(b),
                         _ => None,
                     })
-                    .ok_or_else(|| ReflectorError::DecorationFailed("Binding decoration not found".to_string()))?;
-                
+                    .ok_or_else(|| {
+                        ReflectorError::DecorationFailed("Binding decoration not found".to_string())
+                    })?;
+
                 let desc_binding = DescriptorBinding {
                     binding,
                     name: resource.name.to_string(),
@@ -226,7 +279,9 @@ impl ShaderReflector {
 
         // Extract push constants
         let mut push_constants = Vec::new();
-        if let Ok(push_constant_buffers) = resources.resources_for_type(spirv_cross2::reflect::ResourceType::PushConstant) {
+        if let Ok(push_constant_buffers) =
+            resources.resources_for_type(spirv_cross2::reflect::ResourceType::PushConstant)
+        {
             for resource in push_constant_buffers {
                 push_constants.push(PushConstant {
                     name: resource.name.to_string(),
@@ -244,7 +299,6 @@ impl ShaderReflector {
             shader_stage,
         })
     }
-
 }
 
 #[derive(Debug, Clone)]

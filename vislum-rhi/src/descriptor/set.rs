@@ -28,11 +28,11 @@ impl DescriptorSet {
     }
 
     /// Writes a buffer to the descriptor set.
-    /// 
+    ///
     /// # Safety
     /// We keep no state on the descriptor set, so we can't guarantee that the buffer is still valid
     /// when the descriptor set is used.
-    /// 
+    ///
     /// It's up to the upper layer to keep track of the buffer's lifetime.
     pub fn write_buffer(&self, binding: u32, buffer: &Buffer, offset: u64, range: u64) {
         let buffer_info = vk::DescriptorBufferInfo::default()
@@ -58,11 +58,11 @@ impl DescriptorSet {
     }
 
     /// Writes an image to the descriptor set.
-    /// 
+    ///
     /// # Safety
     /// We keep no state on the descriptor set, so we can't guarantee that the image is still valid
     /// when the descriptor set is used.
-    /// 
+    ///
     /// It's up to the upper layer to keep track of the image's lifetime.
     pub fn write_image(
         &self,
@@ -93,4 +93,3 @@ impl DescriptorSet {
         }
     }
 }
-

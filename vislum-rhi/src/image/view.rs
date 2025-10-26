@@ -14,9 +14,7 @@ pub struct ImageViewCreateInfo {
 
 /// The source of the image view.
 enum ImageViewOwner {
-    Image {
-        image: Arc<Image>,
-    },
+    Image { image: Arc<Image> },
     Swapchain,
 }
 
@@ -59,7 +57,8 @@ impl ImageView {
             });
 
         let view = unsafe {
-            image.device()
+            image
+                .device()
                 .ash_handle()
                 .create_image_view(&vk_create_info, None)
                 .expect("Failed to create image view")
@@ -96,12 +95,13 @@ impl ImageView {
             });
 
         let inner = unsafe {
-            image.device()
+            image
+                .device()
                 .ash_handle()
                 .create_image_view(&vk_create_info, None)
                 .expect("Failed to create image view")
         };
- 
+
         Self {
             inner,
             format: create_info.format,
@@ -126,7 +126,8 @@ impl Drop for ImageView {
         unsafe {
             match &self.owner {
                 ImageViewOwner::Image { image } => {
-                    image.device()
+                    image
+                        .device()
                         .ash_handle()
                         .destroy_image_view(self.inner, None);
                 }
@@ -138,4 +139,3 @@ impl Drop for ImageView {
         }
     }
 }
-

@@ -111,10 +111,11 @@ impl CommandBuffer {
     // Dynamic State
     pub fn set_viewport(&self, first_viewport: u32, viewports: &[vk::Viewport]) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_set_viewport(self.buffer, first_viewport, viewports);
+            self.pool.device().ash_handle().cmd_set_viewport(
+                self.buffer,
+                first_viewport,
+                viewports,
+            );
         }
     }
 
@@ -143,15 +144,12 @@ impl CommandBuffer {
         depth_bias_slope_factor: f32,
     ) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_set_depth_bias(
-                    self.buffer,
-                    depth_bias_constant_factor,
-                    depth_bias_clamp,
-                    depth_bias_slope_factor,
-                );
+            self.pool.device().ash_handle().cmd_set_depth_bias(
+                self.buffer,
+                depth_bias_constant_factor,
+                depth_bias_clamp,
+                depth_bias_slope_factor,
+            );
         }
     }
 
@@ -166,10 +164,11 @@ impl CommandBuffer {
 
     pub fn set_depth_bounds(&self, min_depth_bounds: f32, max_depth_bounds: f32) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_set_depth_bounds(self.buffer, min_depth_bounds, max_depth_bounds);
+            self.pool.device().ash_handle().cmd_set_depth_bounds(
+                self.buffer,
+                min_depth_bounds,
+                max_depth_bounds,
+            );
         }
     }
 
@@ -184,19 +183,21 @@ impl CommandBuffer {
 
     pub fn set_stencil_write_mask(&self, face_mask: vk::StencilFaceFlags, write_mask: u32) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_set_stencil_write_mask(self.buffer, face_mask, write_mask);
+            self.pool.device().ash_handle().cmd_set_stencil_write_mask(
+                self.buffer,
+                face_mask,
+                write_mask,
+            );
         }
     }
 
     pub fn set_stencil_reference(&self, face_mask: vk::StencilFaceFlags, reference: u32) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_set_stencil_reference(self.buffer, face_mask, reference);
+            self.pool.device().ash_handle().cmd_set_stencil_reference(
+                self.buffer,
+                face_mask,
+                reference,
+            );
         }
     }
 
@@ -300,27 +301,29 @@ impl CommandBuffer {
         compare_op: vk::CompareOp,
     ) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_set_stencil_op(
-                    self.buffer,
-                    face_mask,
-                    fail_op,
-                    pass_op,
-                    depth_fail_op,
-                    compare_op,
-                );
+            self.pool.device().ash_handle().cmd_set_stencil_op(
+                self.buffer,
+                face_mask,
+                fail_op,
+                pass_op,
+                depth_fail_op,
+                compare_op,
+            );
         }
     }
 
     // Drawing
-    pub fn bind_pipeline(&self, bind_point: vk::PipelineBindPoint, pipeline: &impl VkHandle<Handle = vk::Pipeline>) {
+    pub fn bind_pipeline(
+        &self,
+        bind_point: vk::PipelineBindPoint,
+        pipeline: &impl VkHandle<Handle = vk::Pipeline>,
+    ) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_bind_pipeline(self.buffer, bind_point, pipeline.vk_handle());
+            self.pool.device().ash_handle().cmd_bind_pipeline(
+                self.buffer,
+                bind_point,
+                pipeline.vk_handle(),
+            );
         }
     }
 
@@ -328,19 +331,28 @@ impl CommandBuffer {
         let buffers = [buffer.vk_handle()];
         let offsets = [offset];
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_bind_vertex_buffers(self.buffer, 0, &buffers, &offsets);
+            self.pool.device().ash_handle().cmd_bind_vertex_buffers(
+                self.buffer,
+                0,
+                &buffers,
+                &offsets,
+            );
         }
     }
 
-    pub fn bind_index_buffer(&self, buffer: &impl VkHandle<Handle = vk::Buffer>, offset: u64, index_type: vk::IndexType) {
+    pub fn bind_index_buffer(
+        &self,
+        buffer: &impl VkHandle<Handle = vk::Buffer>,
+        offset: u64,
+        index_type: vk::IndexType,
+    ) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_bind_index_buffer(self.buffer, buffer.vk_handle(), offset, index_type);
+            self.pool.device().ash_handle().cmd_bind_index_buffer(
+                self.buffer,
+                buffer.vk_handle(),
+                offset,
+                index_type,
+            );
         }
     }
 
@@ -352,32 +364,26 @@ impl CommandBuffer {
         descriptor_sets: &[vk::DescriptorSet],
     ) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_bind_descriptor_sets(
-                    self.buffer,
-                    pipeline_bind_point,
-                    layout,
-                    first_set,
-                    descriptor_sets,
-                    &[],
-                );
+            self.pool.device().ash_handle().cmd_bind_descriptor_sets(
+                self.buffer,
+                pipeline_bind_point,
+                layout,
+                first_set,
+                descriptor_sets,
+                &[],
+            );
         }
     }
 
     pub fn draw(&self, vertices: std::ops::Range<u32>, instances: std::ops::Range<u32>) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_draw(
-                    self.buffer,
-                    vertices.end - vertices.start,
-                    instances.end - instances.start,
-                    vertices.start,
-                    instances.start,
-                );
+            self.pool.device().ash_handle().cmd_draw(
+                self.buffer,
+                vertices.end - vertices.start,
+                instances.end - instances.start,
+                vertices.start,
+                instances.start,
+            );
         }
     }
 
@@ -388,17 +394,14 @@ impl CommandBuffer {
         instances: std::ops::Range<u32>,
     ) {
         unsafe {
-            self.pool
-                .device()
-                .ash_handle()
-                .cmd_draw_indexed(
-                    self.buffer,
-                    indices.end - indices.start,
-                    instances.end - instances.start,
-                    indices.start,
-                    vertex_offset,
-                    instances.start,
-                );
+            self.pool.device().ash_handle().cmd_draw_indexed(
+                self.buffer,
+                indices.end - indices.start,
+                instances.end - instances.start,
+                indices.start,
+                vertex_offset,
+                instances.start,
+            );
         }
     }
 }
@@ -406,11 +409,10 @@ impl CommandBuffer {
 impl Drop for CommandBuffer {
     fn drop(&mut self) {
         unsafe {
-            self.pool.device().ash_handle().free_command_buffers(
-                self.pool.vk_handle(),
-                &[self.buffer],
-            );
+            self.pool
+                .device()
+                .ash_handle()
+                .free_command_buffers(self.pool.vk_handle(), &[self.buffer]);
         }
     }
 }
-

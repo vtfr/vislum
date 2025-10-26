@@ -24,4 +24,3 @@ vk_enum! {
         Present = PRESENT_SRC_KHR,
     }
 }
-

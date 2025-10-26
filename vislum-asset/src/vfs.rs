@@ -12,12 +12,11 @@ static_assertions::assert_impl_all!(VirtualFileSystem: Send, Sync);
 
 impl VirtualFileSystem {
     /// Adds a new virtual filesystem entry.
-    /// 
+    ///
     /// If an entry with the same root already exists, it will be replaced.
     pub fn add(&mut self, entry: VirtualFileSystemEntry) -> Option<VirtualFileSystemEntry> {
         let mut entries = self.entries.lock().unwrap();
-        let old_entry = entries.iter_mut()
-            .find(|e| e.root == entry.root);
+        let old_entry = entries.iter_mut().find(|e| e.root == entry.root);
 
         if let Some(old_entry) = old_entry {
             Some(std::mem::replace(old_entry, entry))
@@ -31,8 +30,7 @@ impl VirtualFileSystem {
     pub fn resolve(&self, path: &AssetPath) -> Option<ResolvedVirtualAssetPath> {
         let entries = self.entries.lock().unwrap();
 
-        entries.iter()
-            .find_map(|e| e.resolve(path))
+        entries.iter().find_map(|e| e.resolve(path))
     }
 }
 
@@ -40,7 +38,7 @@ impl VirtualFileSystem {
 #[derive(Clone)]
 pub struct VirtualFileSystemEntry {
     /// The root prefix of the entry.
-    /// 
+    ///
     /// [`AssetPath`]s starting with this prefix will be resolved to this entry.
     pub root: AssetPath,
 
@@ -65,10 +63,7 @@ impl VirtualFileSystemEntry {
 
     /// Returns whether the entry matches the given path.
     pub fn resolve(&self, path: &AssetPath) -> Option<ResolvedVirtualAssetPath> {
-        let stripped_path = path
-            .path()
-            .strip_prefix(self.root.path())
-            .ok()?;
+        let stripped_path = path.path().strip_prefix(self.root.path()).ok()?;
 
         // If the entry is configured to strip the prefix, use the stripped path.
         let path = if self.strip_prefix {

@@ -1,14 +1,14 @@
+use std::collections::HashMap;
+use std::hash::Hash;
 use std::ops::Deref;
 use std::{borrow::Borrow, rc::Rc};
-use std::hash::Hash;
-use std::collections::HashMap;
 
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 
-use crate::value::SValueTypeInfo;
 use crate::compile::CompileNodeFn;
 use crate::node::{InputBlueprint, NodeBlueprint};
+use crate::value::SValueTypeInfo;
 
 /// A unique identifier for a node type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -45,17 +45,24 @@ pub struct NodeType {
 impl NodeType {
     /// Creates a new node schema.
     pub fn new(
-        id: NodeTypeId, 
-        inputs: Vec<InputDefinition>, 
+        id: NodeTypeId,
+        inputs: Vec<InputDefinition>,
         outputs: Vec<OutputDefinition>,
         compile_node_fn: CompileNodeFn,
     ) -> Self {
-        Self { id, inputs, outputs, evaluation: EvaluationStrategy::Compile(compile_node_fn) }
+        Self {
+            id,
+            inputs,
+            outputs,
+            evaluation: EvaluationStrategy::Compile(compile_node_fn),
+        }
     }
 
     /// Instantiates a new [`NodeBlueprint`] from this node type.
     pub fn instantiate(self: &Rc<Self>) -> NodeBlueprint {
-        let inputs = self.inputs.iter()
+        let inputs = self
+            .inputs
+            .iter()
             .map(|input| input.instantiate())
             .collect();
 
@@ -77,13 +84,15 @@ impl NodeType {
     }
 
     pub fn get_input_by_name(&self, name: &str) -> Option<(usize, &InputDefinition)> {
-        self.inputs.iter()
+        self.inputs
+            .iter()
             .enumerate()
             .find(|(_, input)| input.name == name)
     }
 
     pub fn get_output_by_name(&self, name: &str) -> Option<(usize, &OutputDefinition)> {
-        self.outputs.iter()
+        self.outputs
+            .iter()
             .enumerate()
             .find(|(_, output)| output.name == name)
     }
@@ -106,13 +115,13 @@ pub struct InputDefinition {
 impl InputDefinition {
     /// Creates a new input schema.
     pub fn new(
-        name: impl Into<String>, 
+        name: impl Into<String>,
         value_type: SValueTypeInfo,
         cardinality: InputCardinality,
         flags: AssignmentTypes,
     ) -> Self {
-        Self { 
-            name: name.into(), 
+        Self {
+            name: name.into(),
             value_type,
             cardinality,
             flags,
@@ -133,15 +142,15 @@ impl InputDefinition {
     }
 
     /// Instantiates an input.
-    /// 
+    ///
     /// If the type accepts a default value, it will be used.
     /// Otherwise, the input will be left unset.
     pub fn instantiate(&self) -> InputBlueprint {
         // If the input accepts constants, use the default value if it exists.
         if self.flags.contains(AssignmentTypes::CONSTANT) {
             if let Some(default) = self.value_type.default() {
-                return InputBlueprint::Constant(default)
-            } 
+                return InputBlueprint::Constant(default);
+            }
         }
 
         // Fallback to an unset input.
@@ -200,7 +209,10 @@ pub struct OutputDefinition {
 impl OutputDefinition {
     /// Creates a new output schema.
     pub fn new(name: impl Into<String>, value_type: SValueTypeInfo) -> Self {
-        Self { name: name.into(), value_type }
+        Self {
+            name: name.into(),
+            value_type,
+        }
     }
 }
 
@@ -236,7 +248,7 @@ macro_rules! impl_bundle_tuple {
     ($($ty:ident),* $(,)?) => {
         #[automatically_derived]
         impl<$($ty),*> RegisterNodeType for ($($ty),*,)
-        where 
+        where
             $(
                 $ty: RegisterNodeType,
             )*
@@ -261,7 +273,6 @@ impl_bundle_tuple!(T1, T2, T3, T4, T5, T6, T7);
 impl_bundle_tuple!(T1, T2, T3, T4, T5, T6, T7, T8);
 // this is just a convenience for testing, so 8 is plenty.
 
-
 #[derive(Default)]
 pub struct NodeTypeRegistry {
     node_types: HashMap<NodeTypeId, Rc<NodeType>>,
@@ -275,7 +286,8 @@ impl NodeTypeRegistry {
 
     /// Adds a node type to the registry.
     pub fn add(&mut self, node_type: NodeType) {
-        self.node_types.insert(node_type.id.clone(), Rc::new(node_type));
+        self.node_types
+            .insert(node_type.id.clone(), Rc::new(node_type));
     }
 
     #[inline(always)]
@@ -284,8 +296,8 @@ impl NodeTypeRegistry {
     }
 
     /// Gets a node type from the registry.
-    pub fn get<T>(&self, id: &T) -> Option<Rc<NodeType>> 
-    where 
+    pub fn get<T>(&self, id: &T) -> Option<Rc<NodeType>>
+    where
         NodeTypeId: Borrow<T>,
         T: Hash + Eq + ?Sized,
     {

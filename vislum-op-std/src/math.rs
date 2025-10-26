@@ -1,4 +1,7 @@
-use vislum_op::{eval::{EvalContext, EvalError, Output, Single}, prelude::*};
+use vislum_op::{
+    eval::{EvalContext, EvalError, Output, Single},
+    prelude::*,
+};
 
 /// Adds two floats.
 #[derive(Node)]
@@ -121,7 +124,7 @@ pub struct SinCosFloat {
     phase: Single<f32>,
     #[input]
     amplitude: Single<f32>,
-    
+
     #[output]
     sin: Output<f32>,
     #[output]

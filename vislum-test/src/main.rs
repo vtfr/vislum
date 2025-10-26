@@ -2,13 +2,32 @@ use std::sync::Arc;
 
 use ash::vk;
 use vislum_rhi::{
-    AshHandle, VkHandle, buffer::{Buffer, BufferCreateInfo, BufferUsage}, command::{CommandBuffer, pool::{CommandPool, CommandPoolCreateInfo}}, descriptor::{
-        DescriptorPool, DescriptorPoolCreateInfo, DescriptorSetLayout,
-        DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, layout::DescriptorType,
-    }, device::{
+    AshHandle, VkHandle,
+    buffer::{Buffer, BufferCreateInfo, BufferUsage},
+    command::{
+        CommandBuffer,
+        pool::{CommandPool, CommandPoolCreateInfo},
+    },
+    descriptor::{
+        DescriptorPool, DescriptorPoolCreateInfo, DescriptorSetLayout, DescriptorSetLayoutBinding,
+        DescriptorSetLayoutCreateInfo, layout::DescriptorType,
+    },
+    device::{
         device::{Device, DeviceCreateInfo},
         ffi::{DeviceExtensions, DeviceFeatures},
-    }, image::{Extent2D, Extent3D, ImageCreateInfo, ImageDimensions, ImageFormat, ImageView, ImageViewCreateInfo}, instance::{Instance, InstanceExtensions, Library}, memory::allocator::{MemoryAllocator, MemoryLocation}, pipeline::{GraphicsPipeline, GraphicsPipelineCreateInfo, ShaderModule}, queue::Queue, surface::Surface, swapchain::{Swapchain, SwapchainCreateInfo}, sync::{Fence, Semaphore}, version::Version
+    },
+    image::{
+        Extent2D, Extent3D, ImageCreateInfo, ImageDimensions, ImageFormat, ImageView,
+        ImageViewCreateInfo,
+    },
+    instance::{Instance, InstanceExtensions, Library},
+    memory::allocator::{MemoryAllocator, MemoryLocation},
+    pipeline::{GraphicsPipeline, GraphicsPipelineCreateInfo, ShaderModule},
+    queue::Queue,
+    surface::Surface,
+    swapchain::{Swapchain, SwapchainCreateInfo},
+    sync::{Fence, Semaphore},
+    version::Version,
 };
 use winit::{
     application::ApplicationHandler,
@@ -39,22 +58,25 @@ struct RenderState {
 impl RenderState {
     fn render(&mut self) {
         let frame = self.current_frame;
-        
+
         // Wait for previous frame
         self.in_flight_fences[frame].wait(u64::MAX);
         self.in_flight_fences[frame].reset();
-        
+
         // Acquire next image
-        let image_index = match self.swapchain.acquire_next_image(self.image_available[frame].vk_handle()) {
+        let image_index = match self
+            .swapchain
+            .acquire_next_image(self.image_available[frame].vk_handle())
+        {
             Some(idx) => idx,
             None => return, // Skip this frame
         };
-        
+
         // Record command buffer
         let cmd = &self.command_buffers[frame];
         cmd.reset(false);
         cmd.begin(false);
-        
+
         // Transition image to color attachment
         let barrier = vk::ImageMemoryBarrier::default()
             .image(self.swapchain.images()[image_index as usize].vk_handle())
@@ -71,7 +93,7 @@ impl RenderState {
             // })
             .src_access_mask(vk::AccessFlags::empty())
             .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
-        
+
         cmd.pipeline_barrier(
             vk::PipelineStageFlags::TOP_OF_PIPE,
             vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
@@ -80,21 +102,21 @@ impl RenderState {
             &[],
             &[barrier],
         );
-        
+
         // Begin rendering with clear color
         let clear_value = vk::ClearValue {
             color: vk::ClearColorValue {
                 float32: [0.1, 0.2, 0.3, 1.0], // Nice blue color
             },
         };
-        
+
         let color_attachment = vk::RenderingAttachmentInfo::default()
             .image_view(self.swapchain.views()[image_index as usize].vk_handle())
             .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
             .clear_value(clear_value);
-        
+
         let rendering_info = vk::RenderingInfo::default()
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
@@ -102,30 +124,36 @@ impl RenderState {
             })
             .layer_count(1)
             .color_attachments(std::slice::from_ref(&color_attachment));
-        
+
         cmd.begin_rendering(&rendering_info);
-        
+
         // Set viewport and scissor
         let extent = self.swapchain.extent();
-        cmd.set_viewport(0, &[vk::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width: extent.width as f32,
-            height: extent.height as f32,
-            min_depth: 0.0,
-            max_depth: 1.0,
-        }]);
-        cmd.set_scissor(0, &[vk::Rect2D {
-            offset: vk::Offset2D { x: 0, y: 0 },
-            extent,
-        }]);
-        
+        cmd.set_viewport(
+            0,
+            &[vk::Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: extent.width as f32,
+                height: extent.height as f32,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            }],
+        );
+        cmd.set_scissor(
+            0,
+            &[vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent,
+            }],
+        );
+
         // Draw triangle
         cmd.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, self.pipeline.as_ref());
         cmd.draw(0..3, 0..1);
-        
+
         cmd.end_rendering();
-        
+
         // Transition to present
         let present_barrier = vk::ImageMemoryBarrier::default()
             .image(self.swapchain.images()[image_index as usize].vk_handle())
@@ -142,7 +170,7 @@ impl RenderState {
             })
             .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
             .dst_access_mask(vk::AccessFlags::empty());
-        
+
         cmd.pipeline_barrier(
             vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
             vk::PipelineStageFlags::BOTTOM_OF_PIPE,
@@ -151,26 +179,31 @@ impl RenderState {
             &[],
             &[present_barrier],
         );
-        
+
         cmd.end();
-        
+
         // Submit
         let wait_semaphores = [self.image_available[frame].vk_handle()];
         let signal_semaphores = [self.render_finished[frame].vk_handle()];
         let command_buffers = [cmd.vk_handle()];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-        
+
         let submit_info = vk::SubmitInfo::default()
             .wait_semaphores(&wait_semaphores)
             .wait_dst_stage_mask(&wait_stages)
             .command_buffers(&command_buffers)
             .signal_semaphores(&signal_semaphores);
-        
-        self.queue.submit(&submit_info, self.in_flight_fences[frame].vk_handle());
-        
+
+        self.queue
+            .submit(&submit_info, self.in_flight_fences[frame].vk_handle());
+
         // Present
-        self.swapchain.present(self.queue.vk_handle(), image_index, self.render_finished[frame].vk_handle());
-        
+        self.swapchain.present(
+            self.queue.vk_handle(),
+            image_index,
+            self.render_finished[frame].vk_handle(),
+        );
+
         // Next frame
         self.current_frame = (self.current_frame + 1) % 2;
     }
@@ -198,16 +231,16 @@ impl ApplicationHandler for App {
             let window_attrs = Window::default_attributes()
                 .with_title("Vislum RHI Demo - Press ESC to exit")
                 .with_inner_size(winit::dpi::LogicalSize::new(800, 600));
-            
+
             let window = event_loop.create_window(window_attrs).unwrap();
             println!("✓ Window created: 800x600");
-            
+
             // Create surface and swapchain now that we have a window
             if let Some(data) = &self.data {
                 println!("Creating surface...");
                 let surface = Surface::new(data.instance.clone(), &window, &window);
                 println!("✓ Surface created");
-                
+
                 println!("Creating swapchain...");
                 let swapchain = Swapchain::new(
                     data.device.clone(),
@@ -220,18 +253,25 @@ impl ApplicationHandler for App {
                         format: ImageFormat::B8G8R8A8Srgb,
                         present_mode: vk::PresentModeKHR::FIFO,
                     },
-                ).expect("failed to create swapchain");
-                
-                println!("✓ Swapchain created with {} images", swapchain.views().len());
-                
+                )
+                .expect("failed to create swapchain");
+
+                println!(
+                    "✓ Swapchain created with {} images",
+                    swapchain.views().len()
+                );
+
                 // Create command pool and buffers
-                let command_pool = Arc::new(CommandPool::new(data.device.clone(), CommandPoolCreateInfo {
-                    queue_family_index: 0,
-                    transient: false,
-                    reset_command_buffer: true,
-                }));
+                let command_pool = Arc::new(CommandPool::new(
+                    data.device.clone(),
+                    CommandPoolCreateInfo {
+                        queue_family_index: 0,
+                        transient: false,
+                        reset_command_buffer: true,
+                    },
+                ));
                 let command_buffers: Vec<_> = command_pool.allocate_command_buffers(2).collect();
-                
+
                 self.render_state = Some(RenderState {
                     queue: data.queue.clone(),
                     _surface: surface,
@@ -244,12 +284,12 @@ impl ApplicationHandler for App {
                     pipeline: data.pipeline.clone(),
                     current_frame: 0,
                 });
-                
+
                 println!("✓ Rendering initialized!");
             }
-            
+
             self.window = Some(window);
-            
+
             // Request first redraw
             if let Some(w) = &self.window {
                 w.request_redraw();
@@ -264,7 +304,9 @@ impl ApplicationHandler for App {
                 event_loop.exit();
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                if event.logical_key == winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape) {
+                if event.logical_key
+                    == winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape)
+                {
                     println!("\nESC pressed, exiting...");
                     event_loop.exit();
                 }
@@ -292,15 +334,17 @@ fn main() {
     let instance = Instance::new(
         library,
         InstanceExtensions {
-        khr_surface: true,
-        khr_wayland_surface: true,
-        ..Default::default()
+            khr_surface: true,
+            khr_wayland_surface: true,
+            ..Default::default()
         },
-    ).expect("failed to create vulkan instance");
+    )
+    .expect("failed to create vulkan instance");
 
     // Get physical device
     println!("Enumerating physical devices...");
-    let physical_devices = instance.enumerate_physical_devices()
+    let physical_devices = instance
+        .enumerate_physical_devices()
         .expect("failed to enumerate physical devices");
     if physical_devices.is_empty() {
         println!("No physical devices found!");
@@ -347,7 +391,8 @@ fn main() {
             usage: BufferUsage::VERTEX_BUFFER,
             location: MemoryLocation::CpuToGpu,
         },
-    ).expect("failed to create vertex buffer");
+    )
+    .expect("failed to create vertex buffer");
     println!("✓ Vertex buffer created");
 
     // Create uniform buffer
@@ -360,7 +405,8 @@ fn main() {
             usage: BufferUsage::UNIFORM_BUFFER,
             location: MemoryLocation::CpuToGpu,
         },
-    ).expect("failed to create uniform buffer");
+    )
+    .expect("failed to create uniform buffer");
     println!("✓ Uniform buffer created");
 
     // Create image (render target)
@@ -379,7 +425,11 @@ fn main() {
             usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
         },
     );
-    println!("✓ Image created: {}x{}", image.extent().width, image.extent().height);
+    println!(
+        "✓ Image created: {}x{}",
+        image.extent().width,
+        image.extent().height
+    );
 
     // Create image view
     println!("\nCreating image view...");
@@ -409,10 +459,7 @@ fn main() {
 
     // Create descriptor pool
     println!("\nCreating descriptor pool...");
-    let descriptor_pool = DescriptorPool::new(
-        device.clone(),
-        DescriptorPoolCreateInfo::default(),
-    );
+    let descriptor_pool = DescriptorPool::new(device.clone(), DescriptorPoolCreateInfo::default());
     println!("✓ Descriptor pool created");
 
     // Allocate descriptor set
@@ -453,7 +500,7 @@ fn main() {
     println!("\nCreating queue...");
     let queue = Queue::new(device.clone(), 0, 0);
     println!("✓ Queue created");
-    
+
     // Create synchronization primitives
     println!("Creating synchronization primitives...");
     let image_available = vec![
@@ -469,16 +516,18 @@ fn main() {
         Fence::new(device.clone(), true),
     ];
     println!("✓ Synchronization primitives created");
-    
+
     // Load shaders and create pipeline
     println!("\nLoading shaders...");
-    let vert_code = std::fs::read("vislum-test/shaders/triangle_simple.vert.spv").expect("Failed to read vertex shader");
-    let frag_code = std::fs::read("vislum-test/shaders/triangle_simple.frag.spv").expect("Failed to read fragment shader");
-    
+    let vert_code = std::fs::read("vislum-test/shaders/triangle_simple.vert.spv")
+        .expect("Failed to read vertex shader");
+    let frag_code = std::fs::read("vislum-test/shaders/triangle_simple.frag.spv")
+        .expect("Failed to read fragment shader");
+
     let vertex_shader = ShaderModule::new(device.clone(), &vert_code);
     let fragment_shader = ShaderModule::new(device.clone(), &frag_code);
     println!("✓ Shaders loaded");
-    
+
     println!("Creating graphics pipeline...");
     let pipeline = GraphicsPipeline::new(
         device.clone(),
@@ -493,10 +542,10 @@ fn main() {
         },
     );
     println!("✓ Graphics pipeline created");
-    
+
     println!("\n=== Opening Window ===");
     let event_loop = EventLoop::new().unwrap();
-    
+
     let mut app = App {
         window: None,
         render_state: None,
@@ -510,17 +559,17 @@ fn main() {
             pipeline,
         }),
     };
-    
+
     println!("Starting event loop...");
     println!("Press ESC or close window to exit\n");
-    
+
     event_loop.run_app(&mut app).unwrap();
-    
+
     // Wait for device to finish
     println!("\nWaiting for device to finish...");
     unsafe {
         device.ash_handle().device_wait_idle().unwrap();
     }
-    
+
     println!("\n=== Demo Complete ===");
 }
