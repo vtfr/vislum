@@ -2,27 +2,13 @@ use std::sync::Arc;
 
 use ash::vk;
 use vislum_rhi::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage},
-    command_buffer::pool::{CommandPool, CommandPoolCreateInfo},
-    descriptor::{
+    AshHandle, VkHandle, buffer::{Buffer, BufferCreateInfo, BufferUsage}, command::{CommandBuffer, pool::{CommandPool, CommandPoolCreateInfo}}, descriptor::{
         DescriptorPool, DescriptorPoolCreateInfo, DescriptorSetLayout,
         DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, layout::DescriptorType,
-    },
-    device::{
+    }, device::{
         device::{Device, DeviceCreateInfo},
         ffi::{DeviceExtensions, DeviceFeatures},
-    },
-    image::{Extent2D, Extent3D, ImageCreateInfo, ImageDimensions, ImageFormat, ImageView, ImageViewCreateInfo},
-    AshHandle,
-    instance::{Instance, InstanceExtensions, Library},
-    memory::allocator::{MemoryAllocator, MemoryLocation},
-    pipeline::{GraphicsPipeline, GraphicsPipelineCreateInfo, ShaderModule},
-    queue::Queue,
-    surface::Surface,
-    swapchain::{Swapchain, SwapchainCreateInfo},
-    sync::{Fence, Semaphore},
-    version::Version,
-    VkHandle,
+    }, image::{Extent2D, Extent3D, ImageCreateInfo, ImageDimensions, ImageFormat, ImageView, ImageViewCreateInfo}, instance::{Instance, InstanceExtensions, Library}, memory::allocator::{MemoryAllocator, MemoryLocation}, pipeline::{GraphicsPipeline, GraphicsPipelineCreateInfo, ShaderModule}, queue::Queue, surface::Surface, swapchain::{Swapchain, SwapchainCreateInfo}, sync::{Fence, Semaphore}, version::Version
 };
 use winit::{
     application::ApplicationHandler,
@@ -42,7 +28,7 @@ struct RenderState {
     _surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
     command_pool: Arc<CommandPool>,
-    command_buffers: Vec<vislum_rhi::command_buffer::buffer::CommandBuffer>,
+    command_buffers: Vec<CommandBuffer>,
     image_available: Vec<Arc<Semaphore>>,
     render_finished: Vec<Arc<Semaphore>>,
     in_flight_fences: Vec<Arc<Fence>>,
@@ -76,13 +62,13 @@ impl RenderState {
             .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
             .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
+            // .subresource_range(vk::ImageSubresourceRange {
+            //     aspect_mask: vk::ImageAspectFlags::COLOR,
+            //     base_mip_level: 0,
+            //     level_count: 1,
+            //     base_array_layer: 0,
+            //     layer_count: 1,
+            // })
             .src_access_mask(vk::AccessFlags::empty())
             .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
         
@@ -234,7 +220,7 @@ impl ApplicationHandler for App {
                         format: ImageFormat::B8G8R8A8Srgb,
                         present_mode: vk::PresentModeKHR::FIFO,
                     },
-                );
+                ).expect("failed to create swapchain");
                 
                 println!("✓ Swapchain created with {} images", swapchain.views().len());
                 
@@ -302,18 +288,20 @@ fn main() {
 
     // Create instance
     println!("Creating Vulkan instance...");
-    let library = Library::new();
+    let library = Library::new().expect("failed to load vulkan library");
     let instance = Instance::new(
         library,
         InstanceExtensions {
         khr_surface: true,
+        khr_wayland_surface: true,
         ..Default::default()
         },
-    );
+    ).expect("failed to create vulkan instance");
 
     // Get physical device
     println!("Enumerating physical devices...");
-    let physical_devices = instance.enumerate_physical_devices();
+    let physical_devices = instance.enumerate_physical_devices()
+        .expect("failed to enumerate physical devices");
     if physical_devices.is_empty() {
         println!("No physical devices found!");
         return;
@@ -331,7 +319,9 @@ fn main() {
             api_version: Version::new(1, 3, 0),
             enabled_extensions: DeviceExtensions {
                 khr_swapchain: true,
+                khr_synchronization2: true,
                 khr_dynamic_rendering: true,
+                khr_ext_descriptor_indexing: true,
                 ..Default::default()
             },
             enabled_features: DeviceFeatures {
@@ -357,7 +347,7 @@ fn main() {
             usage: BufferUsage::VERTEX_BUFFER,
             location: MemoryLocation::CpuToGpu,
         },
-    );
+    ).expect("failed to create vertex buffer");
     println!("✓ Vertex buffer created");
 
     // Create uniform buffer
@@ -370,7 +360,7 @@ fn main() {
             usage: BufferUsage::UNIFORM_BUFFER,
             location: MemoryLocation::CpuToGpu,
         },
-    );
+    ).expect("failed to create uniform buffer");
     println!("✓ Uniform buffer created");
 
     // Create image (render target)

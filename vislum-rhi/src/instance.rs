@@ -4,6 +4,7 @@ use ash::vk;
 
 use crate::{
     AshHandle, VkHandle, device::physical::PhysicalDevice, impl_extensions, version::Version,
+    Error, WithContext,
 };
 
 pub struct Library {
@@ -20,10 +21,15 @@ impl AshHandle for Library {
 }
 
 impl Library {
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self {
-            inner: unsafe { ash::Entry::load().unwrap() },
-        })
+    pub fn new() -> Result<Arc<Self>, Error> {
+        let entry = unsafe { ash::Entry::load() }
+            .map_err(|_| Error::Vulkan {
+                context: "failed to load vulkan entry".into(),
+                result: ash::vk::Result::ERROR_INITIALIZATION_FAILED,
+            })?;
+        Ok(Arc::new(Self {
+            inner: entry,
+        }))
     }
 }
 
@@ -69,7 +75,7 @@ impl std::fmt::Debug for Instance {
 }
 
 impl Instance {
-    pub fn new(library: Arc<Library>, extensions: InstanceExtensions) -> Arc<Self> {
+    pub fn new(library: Arc<Library>, extensions: InstanceExtensions) -> Result<Arc<Self>, Error> {
         let entry = library.ash_handle();
 
         // Enumerate the instance version.
@@ -79,15 +85,16 @@ impl Instance {
         let available_extensions = Self::enumerate_instance_extension(entry);
 
         // Compute the required extensions for the given instance version and requested extensions.
-        let required_extensions = Self::compute_required_extensions(instance_version);
+        let required_extensions = Self::compute_required_extensions(instance_version)
+            .combine(&extensions);
 
-        // If the required extensions are not available, panic.
+        // If the required extensions are not available, return error.
         let missing_extensions = required_extensions.difference(&available_extensions);
         if !missing_extensions.is_empty() {
-            panic!(
-                "Required extensions are not available: {:?}",
-                missing_extensions
-            );
+            return Err(Error::Vulkan {
+                context: format!("required extensions are not available: {:?}", missing_extensions).into(),
+                result: vk::Result::ERROR_EXTENSION_NOT_PRESENT,
+            });
         }
 
         let enabled_extension_names = required_extensions.to_vk_ptr_names();
@@ -101,7 +108,8 @@ impl Instance {
             .enabled_extension_names(&*enabled_extension_names)
             .application_info(&application_info);
 
-        let instance = unsafe { library.ash_handle().create_instance(&create_info, None).unwrap() };
+        let instance = unsafe { library.ash_handle().create_instance(&create_info, None)
+            .with_context("failed to create vulkan instance")? };
 
         let khr_surface = if extensions.khr_surface {
             Some(ash::khr::surface::Instance::new(library.ash_handle(), &instance))
@@ -109,11 +117,11 @@ impl Instance {
             None
         };
 
-        Arc::new(Self {
+        Ok(Arc::new(Self {
             library,
             instance,
             khr_surface,
-        })
+        }))
     }
 
     #[inline]
@@ -134,13 +142,14 @@ impl Instance {
     /// will be pre-filtered for the caller. But callers ultimately responsible for checking the
     /// compatibility of the physical devices with the advanced features and extensions required
     /// by the application.
-    pub fn enumerate_physical_devices(self: &Arc<Self>) -> Vec<Arc<PhysicalDevice>> {
-        let raw_physical_devices = unsafe { self.ash_handle().enumerate_physical_devices().unwrap() };
+    pub fn enumerate_physical_devices(self: &Arc<Self>) -> Result<Vec<Arc<PhysicalDevice>>, Error> {
+        let raw_physical_devices = unsafe { self.ash_handle().enumerate_physical_devices()
+            .with_context("failed to enumerate physical devices")? };
 
-        raw_physical_devices
+        Ok(raw_physical_devices
             .into_iter()
             .map(|physical_device| PhysicalDevice::from_vk(Arc::clone(self), physical_device))
-            .collect()
+            .collect())
     }
 
     /// Tries to enumerate the instance version.
@@ -161,7 +170,7 @@ impl Instance {
         InstanceExtensions::from_vk(
             extension_properties
                 .iter()
-                .map(|properties| properties.extension_name_as_c_str().unwrap()),
+                .filter_map(|properties| properties.extension_name_as_c_str().ok()),
         )
     }
 

@@ -50,6 +50,27 @@ impl_features! {
     }
 }
 
+impl DeviceFeatures {
+    /// The minimum features required by the RHI for rendering.
+    const MINIMUM: DeviceFeatures = DeviceFeatures {
+        dynamic_rendering: true,
+        synchronization2: true,
+        extended_dynamic_state: true,
+        ..DeviceFeatures::empty()
+    };
+
+    /// The minimum features required for bindless descriptor sets.
+    const BINDLESS: DeviceFeatures = DeviceFeatures {
+        descriptor_indexing: true,
+        shader_input_attachment_array_dynamic_indexing: false,
+        shader_sampled_image_array_non_uniform_indexing: true,
+        runtime_descriptor_array: true,
+        descriptor_binding_variable_descriptor_count: true,
+        descriptor_binding_partially_bound: true,
+        ..DeviceFeatures::empty()
+    };
+}
+
 #[derive(Default, Wiring)]
 pub(crate) struct DevicePhysicalFeaturesFFI {
     // #[wiring(base)]

@@ -6,6 +6,7 @@ use crate::{
     AshHandle, VkHandle,
     device::device::Device,
     memory::allocator::{AllocationDescription, MemoryAllocation, MemoryAllocator, MemoryLocation},
+    Error, WithContext,
 };
 
 bitflags::bitflags! {
@@ -81,7 +82,7 @@ impl Buffer {
         device: Arc<Device>,
         allocator: Arc<MemoryAllocator>,
         create_info: BufferCreateInfo,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let vk_create_info = vk::BufferCreateInfo::default()
             .size(create_info.size)
             .usage(create_info.usage.to_vk())
@@ -91,7 +92,7 @@ impl Buffer {
             device
                 .ash_handle()
                 .create_buffer(&vk_create_info, None)
-                .expect("Failed to create buffer")
+                .with_context("failed to create buffer")?
         };
 
         // Allocate memory for the buffer
@@ -103,22 +104,25 @@ impl Buffer {
                 requirements,
                 location: create_info.location,
             })
-            .expect("Failed to allocate memory for buffer");
+            .map_err(|err| Error::Vulkan {
+                context: format!("failed to allocate memory for buffer: {}", err).into(),
+                result: ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY,
+            })?;
 
         // Bind the memory to the buffer
         unsafe {
             device
                 .ash_handle()
                 .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
-                .expect("Failed to bind buffer memory");
+                .with_context("failed to bind buffer memory")?;
         }
 
-        Self {
+        Ok(Self {
             device,
             buffer,
             allocation,
             size: create_info.size,
-        }
+        })
     }
 
     #[inline]

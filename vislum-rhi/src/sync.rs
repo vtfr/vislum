@@ -23,7 +23,7 @@ impl VkHandle for Semaphore {
 }
 
 impl Semaphore {
-    pub fn new(device: Arc<Device>) -> Self {
+    pub fn new(device: Arc<Device>) -> Arc<Self> {
         let create_info = vk::SemaphoreCreateInfo::default();
 
         let semaphore = unsafe {
@@ -33,7 +33,7 @@ impl Semaphore {
                 .expect("Failed to create semaphore")
         };
 
-        Self { device, semaphore }
+        Arc::new(Self { device, semaphore })
     }
 }
 

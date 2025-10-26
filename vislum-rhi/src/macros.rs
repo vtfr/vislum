@@ -146,7 +146,7 @@ macro_rules! impl_features {
         }
     ) => {
         $(#[$attr])*
-        #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+        #[derive(Default, Copy, Clone, PartialEq, Eq, Hash)]
         $vis struct $ident {
             $(
                 $(#[$field_meta])*
@@ -154,8 +154,22 @@ macro_rules! impl_features {
             )*
         }
 
+        impl std::fmt::Debug for $ident {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                let features = [
+                    $(
+                        (stringify!($field_ident), self.$field_ident),
+                    )*
+                ]
+                    .into_iter()
+                    .filter_map(|(feature, enabled)| enabled.then_some(feature));
+
+                f.debug_list().entries(features).finish()
+            }
+        }
+
         impl $ident {
-            pub fn combine(&self, other: &Self) -> Self {
+            pub const fn combine(&self, other: &Self) -> Self {
                 Self {
                     $(
                         $field_ident: self.$field_ident || other.$field_ident,
@@ -163,7 +177,7 @@ macro_rules! impl_features {
                 }
             }
 
-            pub fn difference(&self, other: &Self) -> Self {
+            pub const fn difference(&self, other: &Self) -> Self {
                 Self {
                     $(
                         $field_ident: self.$field_ident && !other.$field_ident,
@@ -171,8 +185,18 @@ macro_rules! impl_features {
                 }
             }
 
-            pub fn is_empty(&self) -> bool {
-                self == &Self::default()
+            #[inline]
+            pub const fn empty() -> Self {
+                Self {
+                    $(
+                        $field_ident: false,
+                    )*
+                }
+            }
+
+            /// Returns true if all features are disabled.
+            pub const fn is_empty(&self) -> bool {
+                true $(&& !self.$field_ident)*
             }
         }
     }

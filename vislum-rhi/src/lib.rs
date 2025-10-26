@@ -87,7 +87,7 @@ pub trait WithContext<T> {
         S: Into<Cow<'static, str>>;
 }
 
-impl<T> WithContext<T> for ash::prelude::VkResult<T> {
+impl<T> WithContext<T> for Result<T, ash::vk::Result> {
     fn with_context_fn<F, S>(self, context: F) -> Result<T, Error>
     where 
         F: FnOnce() -> S,
