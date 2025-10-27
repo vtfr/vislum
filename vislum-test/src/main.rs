@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ash::vk;
 use vislum_rhi::{
     AshHandle, VkHandle,
-    buffer::{Buffer, BufferCreateInfo, BufferUsage},
+    xx::{Buffer, BufferCreateInfo, BufferUsage},
     command::{
         CommandBuffer,
         pool::{CommandPool, CommandPoolCreateInfo},
