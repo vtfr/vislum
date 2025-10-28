@@ -14,7 +14,7 @@ use vulkano::{
     memory::allocator::{MemoryAllocator, StandardMemoryAllocator},
 };
 
-use crate::resources::ResourceManager;
+// use crate::resources::ResourceManager;
 
 bitflags::bitflags! {
     pub struct RenderingFeatures: u8 {
@@ -191,7 +191,7 @@ pub struct RenderContext {
     queue: Arc<Queue>,
     descriptor_set_allocator: Arc<dyn DescriptorSetAllocator>,
     memory_allocator: Arc<dyn MemoryAllocator>,
-    resource_manager: ResourceManager,
+    // resource_manager: ResourceManager,
 }
 
 impl RenderContext {
@@ -206,22 +206,22 @@ impl RenderContext {
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-        let resource_manager = ResourceManager::new(
-            device.clone(),
-            descriptor_set_allocator.clone(),
-            memory_allocator.clone(),
-        );
+        // let resource_manager = ResourceManager::new(
+        //     device.clone(),
+        //     descriptor_set_allocator.clone(),
+        //     memory_allocator.clone(),
+        // );
 
         Self {
             device,
             queue,
             descriptor_set_allocator,
             memory_allocator,
-            resource_manager,
+            // resource_manager,
         }
     }
 
-    pub fn resource_manager_mut(&mut self) -> &mut ResourceManager {
-        &mut self.resource_manager
-    }
+    // pub fn resource_manager_mut(&mut self) -> &mut ResourceManager {
+    //     // &mut self.resource_manager
+    // }
 }

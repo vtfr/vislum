@@ -1,4 +1,6 @@
 pub mod context;
-pub mod pipeline;
-pub mod resources;
 pub mod shader;
+// pub mod buffer;
+pub mod scene;
+pub mod resource;
+pub mod material;
