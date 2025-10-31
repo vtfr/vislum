@@ -7,6 +7,23 @@ slotmap::new_key_type! {
     pub(crate) struct ResourceKey;
 }
 
+/// The type of a resource.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ResourceType {
+    /// A material.
+    Material,
+    /// A texture.
+    Texture,
+    /// A mesh.
+    Mesh,
+}
+
+/// A resource.
+pub trait Resource: 'static {
+    /// The type of the resource.
+    const TYPE: ResourceType;
+}
+
 /// A weak-reference to a resource.
 pub struct ResourceId<T> {
     key: ResourceKey,
@@ -42,13 +59,70 @@ where
     }
 }
 
-impl<T> ResourceId<T> {
+impl<T> ResourceId<T>
+where
+    T: Resource,
+{
     #[inline]
     pub(crate) const fn new(key: ResourceKey) -> Self {
         Self {
             key,
             phantom: PhantomData,
         }
+    }
+
+    /// Erases the generic parameter of the resource id, returning an [`ErasedResourceId`].
+    /// 
+    /// This is useful for generic containers of abstract resources.
+    #[inline]
+    pub const fn erase(self) -> ErasedResourceId {
+        ErasedResourceId::new(T::TYPE, self.key)
+    }
+}
+
+/// An weak, untyped resource id.
+/// 
+/// This type contains no generic parameter, and stores the resource type direclty in the type itself,
+/// allowing for generic containers of abstract resources.
+/// 
+/// Casting is performed at runtime by calling the [`cast`] method, which returns a [`ResourceId<T>`] 
+/// if the cast is successful.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ErasedResourceId {
+    ty: ResourceType,
+    key: ResourceKey,
+}
+
+impl ErasedResourceId {
+    #[inline]
+    pub(crate) const fn new(ty: ResourceType, key: ResourceKey) -> Self {
+        Self { ty, key }
+    }
+
+    #[inline]
+    pub const fn ty(&self) -> ResourceType {
+        self.ty
+    }
+
+    /// Casts the resource id to the given resource type.
+    pub fn cast<T>(self) -> Option<ResourceId<T>>
+    where
+        T: Resource,
+    {
+        if self.ty == T::TYPE {
+            Some(ResourceId::new(self.key))
+        } else {
+            None
+        }
+    }
+
+    /// Casts the resource id to the given resource type, panicking if the cast fails.
+    pub unsafe fn cast_unchecked<T>(self) -> ResourceId<T>
+    where
+        T: Resource,
+    {
+        debug_assert!(self.ty == T::TYPE, "Invalid resource type");
+        ResourceId::new(self.key)
     }
 }
 
@@ -142,7 +216,10 @@ impl<T> Default for ResourceStorage<T> {
     }
 }
 
-impl<T> ResourceStorage<T> {
+impl<T> ResourceStorage<T>
+where
+    T: Resource,
+{
     #[inline]
     pub fn new() -> Self {
         Self::default()
@@ -192,8 +269,8 @@ impl<T> ResourceStorage<T> {
             .map(|(key, resource)| (ResourceId::new(key), resource))
     }
 
-    /// Flushes the drop events for the storage, returning all the resources that have been dropped.
-    pub fn flush_drop_events<'a>(&'a mut self) -> DropEvents<T> {
+    /// Flushes the drop events for the storage, dropping the resources that have no remaining [`Handle`]s.
+    pub fn flush_drop_events<'a>(&'a mut self) -> DropEvents<'a, T> {
         let iter = self.resource_drop_rx.try_iter();
 
         DropEvents {

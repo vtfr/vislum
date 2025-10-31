@@ -14,6 +14,8 @@ use vulkano::{
     memory::allocator::{MemoryAllocator, StandardMemoryAllocator},
 };
 
+use crate::resource::ResourceStorage;
+
 // use crate::resources::ResourceManager;
 
 bitflags::bitflags! {
@@ -191,6 +193,7 @@ pub struct RenderContext {
     queue: Arc<Queue>,
     descriptor_set_allocator: Arc<dyn DescriptorSetAllocator>,
     memory_allocator: Arc<dyn MemoryAllocator>,
+    textures: ResourceStorage<Texture>,
     // resource_manager: ResourceManager,
 }
 
