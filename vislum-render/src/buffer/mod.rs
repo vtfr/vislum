@@ -1,96 +1,34 @@
-// use std::{marker::PhantomData, sync::{Arc, Mutex, atomic::AtomicBool}};
+use std::sync::{Arc, RwLock};
 
-// use vulkano::{
-//     buffer::{BufferContents, BufferUsage, Subbuffer},
-//     memory::allocator::{AllocationCreateInfo, MemoryAllocator},
-// };
+use vulkano::{buffer::{Buffer, Subbuffer}, device::Device, memory::allocator::MemoryAllocator};
 
-// enum TransferState<T> {
-//     Transferred,
-//     Pending {
-//         staging: Subbuffer<T>,
-//     },
-// }
+use crate::context::RenderContext;
 
-// impl<T> Default for TransferState<T> {
-//     fn default() -> Self {
-//         Self::Transferred
-//     }
-// }
+/// Manages the pending uploads to the device.
+pub struct PendingUploadsManager {
+}
 
-// pub trait ImmutableBuffer {
-//     /// Returns true if the buffer has been transferred.
-//     fn transfered(&self) -> bool;
-// } 
+struct PendingUniformUpload<T> {
+    data: T,
+    staging_buffer: Arc<Subbuffer<T>>,
+}
 
-// /// An immutable buffer.
-// ///
-// /// This buffer is immutable and can only be uploaded to once, at creation time.
-// struct RawImmutableBuffer<T> {
-//     buffer: vulkano::buffer::Subbuffer<T>,
-//     transfered: AtomicBool,
-//     state: Mutex<TransferState<T>>,
-// }
+/// A uniform buffer.
+pub struct Uniform<T> {
+    context: Arc<RenderContext>,
+    pending: RwLock<Option<PendingUniformUpload<T>>>,
+    buffer: Arc<Subbuffer<T>>,
+}
 
-// impl<T> RawImmutableBuffer<T>
-// where
-//     T: BufferContents,
-// {
-//     pub fn new(
-//         allocator: Arc<dyn MemoryAllocator>,
-//         buffer_usage: BufferUsage,
-//         data: T,
-//     ) -> Arc<Self> {
-//         let staging = vulkano::buffer::Buffer::from_data(
-//             allocator.clone(),
-//             vulkano::buffer::BufferCreateInfo {
-//                 usage: BufferUsage::TRANSFER_SRC,
-//                 ..Default::default()
-//             },
-//             AllocationCreateInfo::default(),
-//             data,
-//         )
-//         .unwrap();
+impl<T> Uniform<T> {
+    pub fn new(context: Arc<RenderContext>, data: T) -> Self {
+        todo!()
 
-//         let buffer = vulkano::buffer::Buffer::new_sized::<T>(
-//             allocator.clone(),
-//             vulkano::buffer::BufferCreateInfo {
-//                 size: std::mem::size_of::<T>() as u64,
-//                 // Ensure the buffer is usable for transfer and the specified usage.
-//                 usage: BufferUsage::TRANSFER_DST | buffer_usage,
-//                 ..Default::default()
-//             },
-//             AllocationCreateInfo::default(),
-//         )
-//         .unwrap();
+    //     Self {
+    //         context,
+    //         pending: RwLock::new(None),
+    //         buffer: Arc::new(Subbuffer::new(device.clone(), data)),
+    //     }
+    }
+}
 
-//         Arc::new(Self { 
-//             buffer, 
-//             transfered: AtomicBool::new(false), 
-//             state: Mutex::new(TransferState::Pending { staging }),
-//         }) 
-//     }
-// }
-
-// /// A uniform buffer.
-// pub struct Uniform<T> {
-//     buffer: RawImmutableBuffer<T>,
-// }
-
-// impl<T> Uniform<T>
-// where
-//     T: BufferContents,
-// {
-//     pub fn new(
-//         allocator: Arc<dyn MemoryAllocator>,
-//         data: T,
-//     ) -> Self {
-//         Self {
-//             buffer: RawImmutableBuffer::new(allocator, BufferUsage::UNIFORM_BUFFER, data),
-//         }
-//     }
-// }
-
-// struct RingBuffer<T> {
-//     buffers: Vec<Subbuffer<T>>,
-// }

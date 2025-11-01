@@ -13,3 +13,4 @@ vislum-dxc = { path = "../vislum-dxc" }
 thiserror = { workspace = true }
 slotmap = { workspace = true }
 crossbeam-channel = { workspace = true }
+winit = { workspace = true }

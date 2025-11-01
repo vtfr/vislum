@@ -12,6 +12,7 @@ use vulkano::{
     instance::{Instance, InstanceExtensions},
     library::VulkanLibrary,
     memory::allocator::{MemoryAllocator, StandardMemoryAllocator},
+    swapchain::Surface,
 };
 
 use crate::resource::ResourceStorage;
@@ -96,24 +97,17 @@ impl CompatiblePhysicalDevice {
 
 pub struct RenderContextBuilder {
     instance: Arc<Instance>,
+    window: Arc<winit::window::Window>,
 }
 
 impl RenderContextBuilder {
-    pub fn new() -> Self {
+    pub fn new(
+        event_loop: &winit::event_loop::EventLoop<()>,
+        window: Arc<winit::window::Window>,
+    ) -> Self {
         let library = VulkanLibrary::new().unwrap();
 
-        let extensions = InstanceExtensions {
-            khr_surface: true,
-            #[cfg(target_os = "windows")]
-            khr_win32_surface: true,
-            #[cfg(target_os = "linux")]
-            khr_xlib_surface: true,
-            #[cfg(target_os = "linux")]
-            khr_xcb_surface: true,
-            #[cfg(target_os = "linux")]
-            khr_wayland_surface: true,
-            ..Default::default()
-        };
+        let extensions = Surface::required_extensions(event_loop).unwrap();
 
         let create_info = vulkano::instance::InstanceCreateInfo {
             engine_name: Some("Vislum".to_string()),
@@ -125,20 +119,9 @@ impl RenderContextBuilder {
 
         let instance = Instance::new(library, create_info).unwrap();
 
-        Self { instance }
+        Self { instance, window }
     }
 
-    pub fn auto() -> RenderContext {
-        let builder = Self::new();
-
-        let compatible_physical_device = builder
-            .enumerate_compatible_physical_devices()
-            .into_iter()
-            .next()
-            .expect("No compatible physical device found");
-
-        builder.build(compatible_physical_device)
-    }
     /// Enumerate all the physical devices that are compatible with the instance.
     pub fn enumerate_compatible_physical_devices(&self) -> Vec<CompatiblePhysicalDevice> {
         let mut compatible_physical_devices = self
@@ -193,7 +176,7 @@ pub struct RenderContext {
     queue: Arc<Queue>,
     descriptor_set_allocator: Arc<dyn DescriptorSetAllocator>,
     memory_allocator: Arc<dyn MemoryAllocator>,
-    textures: ResourceStorage<Texture>,
+    // textures: ResourceStorage<Texture>,
     // resource_manager: ResourceManager,
 }
 
