@@ -14,3 +14,5 @@ thiserror = { workspace = true }
 slotmap = { workspace = true }
 crossbeam-channel = { workspace = true }
 winit = { workspace = true }
+bytemuck = "1.24.0"
+ash = { workspace = true }

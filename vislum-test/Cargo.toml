@@ -8,9 +8,9 @@ name = "bindless-demo"
 path = "src/bindless_main.rs"
 
 [dependencies]
-vislum-shader = { path = "../vislum-shader" }
-vislum-render = { path = "../vislum-render" }
+# vislum-shader = { path = "../vislum-shader" }
+# vislum-render = { path = "../vislum-render" }
+vislum-render-rhi = { path = "../vislum-render-rhi" }
 winit = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
-ash = { workspace = true }

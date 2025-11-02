@@ -8,7 +8,7 @@ use vislum_op::{
 };
 use vislum_render::mesh::{MeshDescriptor, Vertex};
 use vislum_render::pass::{ForwardRenderPass, ScreenBlitPass};
-use vislum_render::scene::{Scene, SceneCommand, SceneObject};
+use vislum_render::scene::{Scene, SceneCommand, Object};
 use vislum_render::texture::{Texture, TextureDescriptor, TextureFormat};
 use vislum_render::{
     Handle, MeshManager, RenderPassCollector, SceneManager, ScreenRenderTarget, TextureManager,
@@ -155,7 +155,7 @@ impl ApplicationHandler<PlayerEvent> for Player {
             });
 
             let scene = scene_manager
-                .create_with_commands(vec![SceneCommand::AddObject(SceneObject { mesh })]);
+                .create_with_commands(vec![SceneCommand::AddObject(Object { mesh })]);
 
             drop(texture_manager);
             drop(mesh_manager);
