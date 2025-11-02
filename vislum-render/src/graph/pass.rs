@@ -58,14 +58,24 @@ pub struct ExecuteContext<'g> {
     pub command_encoder: CommandEncoder<'g>,
 }
 
-pub struct FrameNode {
+type ExecuteFn = Box<dyn FnMut(&mut ExecuteContext<'_>) + 'static>;
+
+pub trait FrameNode {
+    /// The name of the node.
+    fn name(&self) -> Cow<'static, str>;
+
+    /// Prepares the node for execution.
+    fn prepare(&self, context: &mut PrepareContext) -> ExecuteFn;
+}
+
+pub struct PreparedFrameNode {
     name: Cow<'static, str>,
-    execute: Box<dyn for<'g> FnMut(&mut ExecuteContext<'g>) + 'static>,
+    execute: ExecuteFn,
     write: SmallVec<[FramePassResource; 16]>,
     read: SmallVec<[FramePassResource; 16]>,
 }
 
-impl FrameNode {
+impl PreparedFrameNode {
     /// Returns the name of the node.
     #[inline]
     pub fn name(&self) -> &str {
@@ -89,7 +99,7 @@ impl FrameNode {
     }
 }
 
-impl Debug for FrameNode {
+impl Debug for PreparedFrameNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FrameGraphNode")
             .field("name", &self.name)
@@ -102,7 +112,7 @@ pub struct FrameGraph {
     queue: Arc<Queue>,
     command_pool: Arc<CommandPool>,
     resource_state_traker: ResourceStateTracker,
-    nodes: Vec<FrameNode>,
+    nodes: Vec<Box<dyn FrameNode + 'static>>,
     queue_family_index: u32,
 }
 
@@ -129,48 +139,34 @@ impl FrameGraph {
     }
 
     /// Adds a new pass to the frame graph.
-    pub fn add_pass<S, E, P>(
-        &mut self,
-        resource_manager: &ResourceManager,
-        name: impl Into<Cow<'static, str>>,
-        prepare: P,
-        execute: E,
-    ) where
-        S: 'static,
-        P: Fn(&mut PrepareContext) -> S,
-        E: for<'g, 's> Fn(&mut ExecuteContext<'g>, &'s mut S) + 'static,
+    pub fn add_pass<F>(&mut self, node: F) 
+    where 
+        F: FrameNode + 'static,
     {
-        let mut prepare_context = PrepareContext {
-            resource_manager,
-            write: Default::default(),
-            read: Default::default(),
-        };
-
-        let mut state = prepare(&mut prepare_context);
-
-        // Erase the execution function and bind it to the state.
-        let execute = Box::new(move |ctx: &mut ExecuteContext| {
-            execute(ctx, &mut state);
-        }) as Box<dyn for<'g> FnMut(&mut ExecuteContext<'g>) + 'static>;
-
-        // Deconstruct the prepare context, freeing the resource manager lock.
-        let PrepareContext { write, read, .. } = prepare_context;
-
-        // Construct the node.
-        let node = FrameNode {
-            name: name.into(),
-            write,
-            read,
-            execute,
-        };
-
-        self.nodes.push(node);
+        self.nodes.push(Box::new(node));
     }
 
-    pub fn execute_and_submit(&mut self, submit_info: FrameGraphSubmitInfo) {
+    pub fn execute(&mut self, resource_manager: &ResourceManager, submit_info: FrameGraphSubmitInfo) {
+        // Prepare the nodes
+        let prepared: SmallVec<[PreparedFrameNode; 8]> = self.nodes
+            .drain(..)
+            .map(|mut node| {
+                let mut prepare_context = PrepareContext::new(resource_manager);
+                let execute = node.prepare(&mut prepare_context)
+
+                PreparedFrameNode {
+                    name: node.name(),
+                    write: prepare_context.write,
+                    read: prepare_context.read,
+                    execute,
+                }
+            })
+            .collect();
+
         // Allocate and begin recording the command buffer
-        let mut raw_command_buffer = self.command_pool.allocate(vk::CommandBufferLevel::PRIMARY);
-        raw_command_buffer.begin(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        use vislum_render_rhi::command::{CommandBufferLevel, CommandBufferUsageFlags};
+        let mut raw_command_buffer = self.command_pool.allocate(CommandBufferLevel::PRIMARY);
+        raw_command_buffer.begin(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         
         let auto_command_buffer = AutoCommandBuffer::new(raw_command_buffer);
         
@@ -195,15 +191,11 @@ impl FrameGraph {
     }
 
     fn submit(&self, command_buffer: &vislum_render_rhi::command::CommandBuffer, submit_info: FrameGraphSubmitInfo) {
-        let wait_semaphores: Vec<_> = submit_info.wait_semaphores.iter().map(|s| s.as_ref()).collect();
-        let signal_semaphores: Vec<_> = submit_info.signal_semaphores.iter().map(|s| s.as_ref()).collect();
-        let fence = submit_info.signal_fence.as_ref().map(|f| f.as_ref());
-        
         command_buffer.submit(
-            &self.queue,
-            &wait_semaphores,
-            &signal_semaphores,
-            fence,
+            self.queue.clone(),
+            submit_info.wait_semaphores,
+            submit_info.signal_semaphores,
+            submit_info.signal_fence,
         );
     }
 }

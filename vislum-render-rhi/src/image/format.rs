@@ -10,3 +10,4 @@ vk_enum! {
         Rgb8Srgb => R8G8B8_SRGB,
     }
 }
+

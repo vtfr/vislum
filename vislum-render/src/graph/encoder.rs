@@ -1,6 +1,7 @@
 use ash::vk;
 use vislum_render_rhi::{
     command::AutoCommandBuffer,
+    command::types::{ImageLayout, AccessFlags2, PipelineStageFlags2},
     image::Image,
     buffer::Buffer,
     VkHandle,
@@ -37,12 +38,12 @@ impl<'a> CommandEncoder<'a> {
     pub fn transition_image(
         &mut self,
         image: &Image,
-        old_layout: vk::ImageLayout,
-        new_layout: vk::ImageLayout,
-        src_access: vk::AccessFlags2,
-        dst_access: vk::AccessFlags2,
-        src_stage: vk::PipelineStageFlags2,
-        dst_stage: vk::PipelineStageFlags2,
+        old_layout: ImageLayout,
+        new_layout: ImageLayout,
+        src_access: AccessFlags2,
+        dst_access: AccessFlags2,
+        src_stage: PipelineStageFlags2,
+        dst_stage: PipelineStageFlags2,
     ) {
         self.auto_command_buffer.transition_image(
             image,
@@ -97,7 +98,7 @@ impl<'a> CommandEncoder<'a> {
         &mut self,
         src_buffer: &Buffer,
         dst_image: &Image,
-        dst_layout: vk::ImageLayout,
+        dst_layout: ImageLayout,
         regions: &[vk::BufferImageCopy],
     ) {
         self.auto_command_buffer.copy_buffer_to_image(

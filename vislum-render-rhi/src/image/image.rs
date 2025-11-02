@@ -2,7 +2,21 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, extent::Extent3D, format::Format, image_view::ImageType, memory::{MemoryAllocation, MemoryAllocator, MemoryLocation}, swapchain::Swapchain, vk_enum_flags};
+use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, memory::{MemoryAllocation, MemoryAllocator, MemoryLocation}, swapchain::Swapchain, vk_enum, vk_enum_flags};
+use super::{Extent3D, Format};
+
+vk_enum! {
+    #[derive(Default)]
+    pub enum ImageType: ash::vk::ImageType {
+        /// A one-dimensional image.
+        D1 => TYPE_1D,
+        /// A two-dimensional image.
+        #[default]
+        D2 => TYPE_2D,
+        /// A three-dimensional image.
+        D3 => TYPE_3D,
+    }
+}
 
 vk_enum_flags! {
     pub struct ImageUsage: ash::vk::ImageUsageFlags {
@@ -146,3 +160,4 @@ impl Drop for Image {
         }
     }
 }
+

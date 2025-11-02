@@ -3,6 +3,7 @@ use std::sync::Arc;
 use ash::vk;
 
 use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, sync::{Fence, Semaphore}, queue::Queue, vk_enum};
+use crate::command::types::{CommandBufferUsageFlags, ImageLayout, AccessFlags2, PipelineStageFlags2, PipelineBindPoint, IndexType, Viewport, Rect2D};
 
 vk_enum! {
     pub enum CommandBufferLevel: ash::vk::CommandBufferLevel {
@@ -70,9 +71,9 @@ pub struct CommandBuffer {
 
 impl CommandBuffer {
     /// Begins recording commands into the command buffer.
-    pub fn begin(&mut self, flags: vk::CommandBufferUsageFlags) {
+    pub fn begin(&mut self, flags: CommandBufferUsageFlags) {
         let begin_info = vk::CommandBufferBeginInfo::default()
-            .flags(flags);
+            .flags(flags.to_vk());
 
         unsafe {
             self.device.ash_handle().begin_command_buffer(self.command_buffer.0, &begin_info).unwrap();
@@ -112,33 +113,35 @@ impl CommandBuffer {
     }
 
     /// Sets the viewport.
-    pub fn set_viewport(&self, first_viewport: u32, viewports: &[vk::Viewport]) {
+    pub fn set_viewport(&self, first_viewport: u32, viewports: &[Viewport]) {
+        let viewports_vk: Vec<_> = viewports.iter().map(|v| v.to_vk()).collect();
         unsafe {
             self.device.ash_handle().cmd_set_viewport(
                 self.command_buffer.0,
                 first_viewport,
-                viewports,
+                &viewports_vk,
             );
         }
     }
 
     /// Sets the scissor rectangles.
-    pub fn set_scissor(&self, first_scissor: u32, scissors: &[vk::Rect2D]) {
+    pub fn set_scissor(&self, first_scissor: u32, scissors: &[Rect2D]) {
+        let scissors_vk: Vec<_> = scissors.iter().map(|s| s.to_vk()).collect();
         unsafe {
             self.device.ash_handle().cmd_set_scissor(
                 self.command_buffer.0,
                 first_scissor,
-                scissors,
+                &scissors_vk,
             );
         }
     }
 
     /// Binds a graphics or compute pipeline.
-    pub fn bind_pipeline(&self, pipeline_bind_point: vk::PipelineBindPoint, pipeline: vk::Pipeline) {
+    pub fn bind_pipeline(&self, pipeline_bind_point: PipelineBindPoint, pipeline: vk::Pipeline) {
         unsafe {
             self.device.ash_handle().cmd_bind_pipeline(
                 self.command_buffer.0,
-                pipeline_bind_point,
+                pipeline_bind_point.to_vk(),
                 pipeline,
             );
         }
@@ -147,7 +150,7 @@ impl CommandBuffer {
     /// Binds descriptor sets.
     pub fn bind_descriptor_sets(
         &self,
-        pipeline_bind_point: vk::PipelineBindPoint,
+        pipeline_bind_point: PipelineBindPoint,
         layout: vk::PipelineLayout,
         first_set: u32,
         descriptor_sets: &[vk::DescriptorSet],
@@ -156,7 +159,7 @@ impl CommandBuffer {
         unsafe {
             self.device.ash_handle().cmd_bind_descriptor_sets(
                 self.command_buffer.0,
-                pipeline_bind_point,
+                pipeline_bind_point.to_vk(),
                 layout,
                 first_set,
                 descriptor_sets,
@@ -199,14 +202,14 @@ impl CommandBuffer {
         &self,
         buffer: vk::Buffer,
         offset: vk::DeviceSize,
-        index_type: vk::IndexType,
+        index_type: IndexType,
     ) {
         unsafe {
             self.device.ash_handle().cmd_bind_index_buffer(
                 self.command_buffer.0,
                 buffer,
                 offset,
-                index_type,
+                index_type.to_vk(),
             );
         }
     }
@@ -216,7 +219,7 @@ impl CommandBuffer {
         &self,
         buffer: &crate::buffer::Buffer,
         offset: vk::DeviceSize,
-        index_type: vk::IndexType,
+        index_type: IndexType,
     ) {
         use crate::VkHandle;
         self.bind_index_buffer(buffer.vk_handle(), offset, index_type);
@@ -255,10 +258,10 @@ impl CommandBuffer {
     /// Submits this command buffer to a queue.
     pub fn submit(
         &self,
-        queue: &Queue,
-        wait_semaphores: &[&Semaphore],
-        signal_semaphores: &[&Semaphore],
-        fence: Option<&Fence>,
+        queue: Arc<Queue>,
+        wait_semaphores: Vec<Arc<Semaphore>>,
+        signal_semaphores: Vec<Arc<Semaphore>>,
+        fence: Option<Arc<Fence>>,
     ) {
         let wait_semaphore_handles: Vec<_> = wait_semaphores.iter()
             .map(|s| s.vk_handle())

@@ -51,7 +51,7 @@ impl RenderContext {
     }
 
     pub fn execute_and_submit(&mut self, submit_info: FrameGraphSubmitInfo) {
-        self.frame_graph.execute_and_submit(submit_info);
+        self.frame_graph.execute(submit_info);
     }
 
     /// Uploads data to a buffer.
@@ -125,22 +125,24 @@ impl RenderContext {
                     .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
                     .image_extent(state.extent);
                 
+                use vislum_render_rhi::command::types::ImageLayout;
                 execute_context.command_encoder.copy_buffer_to_image(
                     &state.staging_buffer,
                     &state.destination,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    ImageLayout::TransferDstOptimal,
                     &[copy_region],
                 );
                 
                 // Transition image to shader read layout
+                use vislum_render_rhi::command::types::{ImageLayout, AccessFlags2, PipelineStageFlags2};
                 execute_context.command_encoder.transition_image(
                     &state.destination,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                    vk::AccessFlags2::TRANSFER_WRITE,
-                    vk::AccessFlags2::SHADER_READ,
-                    vk::PipelineStageFlags2::TRANSFER,
-                    vk::PipelineStageFlags2::FRAGMENT_SHADER,
+                    ImageLayout::TransferDstOptimal,
+                    ImageLayout::ShaderReadOnlyOptimal,
+                    AccessFlags2::TRANSFER_WRITE,
+                    AccessFlags2::SHADER_READ,
+                    PipelineStageFlags2::TRANSFER,
+                    PipelineStageFlags2::FRAGMENT_SHADER,
                 );
             }
         );

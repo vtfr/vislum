@@ -9,19 +9,20 @@ use crate::{
     image::Image,
     buffer::Buffer,
     command::CommandBuffer,
+    command::types::{CommandBufferUsageFlags, ImageLayout, AccessFlags2, PipelineStageFlags2, PipelineBindPoint, IndexType, Viewport, Rect2D},
 };
 
 /// Tracks the layout and access state of images for automatic barrier insertion.
 struct ImageState {
-    layout: vk::ImageLayout,
-    access_mask: vk::AccessFlags2,
+    layout: ImageLayout,
+    access_mask: AccessFlags2,
 }
 
 /// A command buffer that automatically inserts memory barriers based on resource usage.
 pub struct AutoCommandBuffer {
     command_buffer: CommandBuffer,
     device: Arc<Device>,
-    image_states: HashMap<vk::Image, ImageState>,
+    image_states: HashMap<ash::vk::Image, ImageState>,
 }
 
 impl AutoCommandBuffer {
@@ -37,7 +38,7 @@ impl AutoCommandBuffer {
     }
 
     /// Begins recording commands.
-    pub fn begin(&mut self, flags: vk::CommandBufferUsageFlags) {
+    pub fn begin(&mut self, flags: CommandBufferUsageFlags) {
         self.command_buffer.begin(flags);
         self.image_states.clear();
     }
@@ -77,12 +78,12 @@ impl AutoCommandBuffer {
     pub fn transition_image(
         &mut self,
         image: &Image,
-        old_layout: vk::ImageLayout,
-        new_layout: vk::ImageLayout,
-        src_access: vk::AccessFlags2,
-        dst_access: vk::AccessFlags2,
-        src_stage: vk::PipelineStageFlags2,
-        dst_stage: vk::PipelineStageFlags2,
+        old_layout: ImageLayout,
+        new_layout: ImageLayout,
+        src_access: AccessFlags2,
+        dst_access: AccessFlags2,
+        src_stage: PipelineStageFlags2,
+        dst_stage: PipelineStageFlags2,
     ) {
         let image_handle = image.vk_handle();
         let current_state = self.image_states.get(&image_handle);
@@ -101,12 +102,12 @@ impl AutoCommandBuffer {
 
         // Insert barrier
         let barrier = vk::ImageMemoryBarrier2::default()
-            .old_layout(old_layout)
-            .new_layout(new_layout)
-            .src_access_mask(src_access)
-            .dst_access_mask(dst_access)
-            .src_stage_mask(src_stage)
-            .dst_stage_mask(dst_stage)
+            .old_layout(old_layout.to_vk())
+            .new_layout(new_layout.to_vk())
+            .src_access_mask(src_access.to_vk())
+            .dst_access_mask(dst_access.to_vk())
+            .src_stage_mask(src_stage.to_vk())
+            .dst_stage_mask(dst_stage.to_vk())
             .image(image_handle)
             .subresource_range(vk::ImageSubresourceRange::default()
                 .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -116,8 +117,8 @@ impl AutoCommandBuffer {
                 .layer_count(1));
 
         self.pipeline_barrier(
-            src_stage,
-            dst_stage,
+            src_stage.to_vk(),
+            dst_stage.to_vk(),
             vk::DependencyFlags::empty(),
             &[],
             &[],
@@ -161,7 +162,7 @@ impl AutoCommandBuffer {
         &mut self,
         src_buffer: &Buffer,
         dst_image: &Image,
-        dst_layout: vk::ImageLayout,
+        dst_layout: ImageLayout,
         regions: &[vk::BufferImageCopy],
     ) {
         let image_handle = dst_image.vk_handle();
@@ -175,21 +176,21 @@ impl AutoCommandBuffer {
                     current_state.layout,
                     dst_layout,
                     current_state.access_mask,
-                    vk::AccessFlags2::TRANSFER_WRITE,
-                    vk::PipelineStageFlags2::ALL_COMMANDS,
-                    vk::PipelineStageFlags2::TRANSFER,
+                    AccessFlags2::TRANSFER_WRITE,
+                    PipelineStageFlags2::ALL_COMMANDS,
+                    PipelineStageFlags2::TRANSFER,
                 );
             }
         } else {
             // Image not tracked yet, transition from UNDEFINED
             self.transition_image(
                 dst_image,
-                vk::ImageLayout::UNDEFINED,
+                ImageLayout::Undefined,
                 dst_layout,
-                vk::AccessFlags2::empty(),
-                vk::AccessFlags2::TRANSFER_WRITE,
-                vk::PipelineStageFlags2::TOP_OF_PIPE,
-                vk::PipelineStageFlags2::TRANSFER,
+                AccessFlags2::NONE,
+                AccessFlags2::TRANSFER_WRITE,
+                PipelineStageFlags2::TOP_OF_PIPE,
+                PipelineStageFlags2::TRANSFER,
             );
         }
         
@@ -198,7 +199,7 @@ impl AutoCommandBuffer {
                 self.command_buffer.vk_handle(),
                 src_buffer.vk_handle(),
                 dst_image.vk_handle(),
-                dst_layout,
+                dst_layout.to_vk(),
                 regions,
             );
         }
@@ -206,7 +207,7 @@ impl AutoCommandBuffer {
         // Update tracked state
         self.image_states.insert(image_handle, ImageState {
             layout: dst_layout,
-            access_mask: vk::AccessFlags2::TRANSFER_WRITE,
+            access_mask: AccessFlags2::TRANSFER_WRITE,
         });
     }
 
@@ -231,24 +232,24 @@ impl AutoCommandBuffer {
     }
 
     /// Sets the viewport.
-    pub fn set_viewport(&mut self, first_viewport: u32, viewports: &[vk::Viewport]) {
+    pub fn set_viewport(&mut self, first_viewport: u32, viewports: &[Viewport]) {
         self.command_buffer.set_viewport(first_viewport, viewports);
     }
 
     /// Sets the scissor rectangles.
-    pub fn set_scissor(&mut self, first_scissor: u32, scissors: &[vk::Rect2D]) {
+    pub fn set_scissor(&mut self, first_scissor: u32, scissors: &[Rect2D]) {
         self.command_buffer.set_scissor(first_scissor, scissors);
     }
 
     /// Binds a graphics or compute pipeline.
-    pub fn bind_pipeline(&mut self, pipeline_bind_point: vk::PipelineBindPoint, pipeline: vk::Pipeline) {
+    pub fn bind_pipeline(&mut self, pipeline_bind_point: PipelineBindPoint, pipeline: vk::Pipeline) {
         self.command_buffer.bind_pipeline(pipeline_bind_point, pipeline);
     }
 
     /// Binds descriptor sets.
     pub fn bind_descriptor_sets(
         &mut self,
-        pipeline_bind_point: vk::PipelineBindPoint,
+        pipeline_bind_point: PipelineBindPoint,
         layout: vk::PipelineLayout,
         first_set: u32,
         descriptor_sets: &[vk::DescriptorSet],
@@ -288,7 +289,7 @@ impl AutoCommandBuffer {
         &mut self,
         buffer: vk::Buffer,
         offset: vk::DeviceSize,
-        index_type: vk::IndexType,
+        index_type: IndexType,
     ) {
         self.command_buffer.bind_index_buffer(buffer, offset, index_type);
     }
@@ -298,7 +299,7 @@ impl AutoCommandBuffer {
         &mut self,
         buffer: &Buffer,
         offset: vk::DeviceSize,
-        index_type: vk::IndexType,
+        index_type: IndexType,
     ) {
         self.command_buffer.bind_index_buffer_buffer(buffer, offset, index_type);
     }

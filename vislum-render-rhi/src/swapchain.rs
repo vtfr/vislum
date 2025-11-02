@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, surface::Surface, format::Format, extent::Extent2D, image::{Image, ImageUsage}, vk_enum};
+use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, surface::Surface, image::{Format, Extent2D, Image, ImageUsage}, vk_enum};
 
 vk_enum! {
     #[derive(Default)]

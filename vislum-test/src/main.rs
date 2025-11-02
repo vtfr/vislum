@@ -54,7 +54,7 @@ enum AppState {
         descriptor_set: vk::DescriptorSet,
         descriptor_pool: vk::DescriptorPool,
         sampler: Arc<vislum_render_rhi::sampler::Sampler>,
-        image_view: Arc<vislum_render_rhi::image_view::ImageView>,
+        image_view: Arc<vislum_render_rhi::image::ImageView>,
         // Vertex/index buffers (using RHI buffers)
         vertex_buffer: Arc<vislum_render_rhi::buffer::Buffer>,
         index_buffer: Arc<vislum_render_rhi::buffer::Buffer>,
@@ -362,12 +362,12 @@ impl ApplicationHandler for App {
             log::info!("Texture image obtained");
             
             // Create image view
-            let image_view = vislum_render_rhi::image_view::ImageView::new(
+            let image_view = vislum_render_rhi::image::ImageView::new(
                 device.clone(),
-                vislum_render_rhi::image_view::ImageViewCreateInfo {
+                vislum_render_rhi::image::ImageViewCreateInfo {
                     image: texture_image,
                     view_type: vk::ImageViewType::TYPE_2D,
-                    format: vislum_render_rhi::format::Format::R8G8B8A8Unorm,
+                    format: vislum_render_rhi::image::Format::Rgba8Unorm,
                     components: vk::ComponentMapping::default(),
                     subresource_range: vk::ImageSubresourceRange::default()
                         .aspect_mask(vk::ImageAspectFlags::COLOR)

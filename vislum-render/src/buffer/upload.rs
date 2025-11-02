@@ -69,14 +69,16 @@ impl Uploader {
 
     pub fn upload_image(&self, image: Arc<Image>, data: &[u8], copy_region: vk::BufferImageCopy) {
         // Create staging buffer
+        use vislum_render_rhi::buffer::BufferUsage;
+        use vislum_render_rhi::memory::MemoryLocation;
         let staging = Buffer::new(
             self.device.clone(),
             self.allocator.clone(),
             BufferCreateInfo {
                 size: data.len() as u64,
-                usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                flags: vk::BufferCreateFlags::empty(),
+                usage: BufferUsage::TRANSFER_SRC,
             },
+            MemoryLocation::CpuToGpu,
         );
 
         // TODO: Map and copy data to staging buffer
@@ -109,10 +111,11 @@ impl Uploader {
                     );
                 }
                 UploadTask::Image { staging, image, copy_region } => {
+                    use vislum_render_rhi::command::types::ImageLayout;
                     command_buffer.copy_buffer_to_image(
                         &staging,
                         &image,
-                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        ImageLayout::TransferDstOptimal,
                         &[copy_region],
                     );
                 }

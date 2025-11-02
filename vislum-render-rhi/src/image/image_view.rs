@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, format::Format, image::Image, vk_enum};
+use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, vk_enum};
+use super::{Format, Image, ImageType};
 
 vk_enum! {
     #[derive(Default)]
@@ -13,19 +14,6 @@ vk_enum! {
         #[default]
         D2 => TYPE_2D,
         /// A three-dimensional image.
-        D3 => TYPE_3D,
-    }
-}
-
-vk_enum! {
-    #[derive(Default)]
-    pub enum ImageType: vk::ImageType {
-        /// A one-dimensional image.
-        D1 => TYPE_1D,
-        /// A two-dimensional image.
-        #[default]
-        D2 => TYPE_2D,
-        // A three-dimensional image.
         D3 => TYPE_3D,
     }
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ash::vk;
-use vislum_render_rhi::{buffer::Buffer, memory::MemoryAllocator};
+use vislum_render_rhi::{buffer::{Buffer, BufferUsage}, memory::{MemoryAllocator, MemoryLocation}};
 
 /// A vertex with position, normal, and UV coordinates.
 #[repr(C)]
@@ -37,9 +37,9 @@ impl Mesh {
             allocator.clone(),
             BufferCreateInfo {
                 size: (vertex_count * std::mem::size_of::<Vertex>()) as u64,
-                usage: vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
-                flags: vk::BufferCreateFlags::empty(),
+                usage: BufferUsage::VERTEX_BUFFER | BufferUsage::TRANSFER_DST,
             },
+            MemoryLocation::GpuOnly,
         );
 
         // Create index buffer
@@ -48,9 +48,9 @@ impl Mesh {
             allocator,
             BufferCreateInfo {
                 size: (index_count * std::mem::size_of::<u32>()) as u64,
-                usage: vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
-                flags: vk::BufferCreateFlags::empty(),
+                usage: BufferUsage::INDEX_BUFFER | BufferUsage::TRANSFER_DST,
             },
+            MemoryLocation::GpuOnly,
         );
 
         Self {
@@ -60,4 +60,8 @@ impl Mesh {
             index_count,
         }
     }
+}
+
+pub struct MeshUploadTask {
+    pub mesh: Arc<Mesh>,
 }
