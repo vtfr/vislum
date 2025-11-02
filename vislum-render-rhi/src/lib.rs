@@ -1,9 +1,17 @@
 use std::ops::Deref;
 
+pub mod buffer;
+pub mod command;
 pub mod device;
 pub mod image;
+pub mod image_view;
+pub mod sampler;
 pub mod instance;
 pub mod memory;
+pub mod queue;
+pub mod surface;
+pub mod swapchain;
+pub mod sync;
 
 mod macros;
 

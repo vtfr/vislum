@@ -4,6 +4,17 @@ use ash::vk;
 
 use crate::{AshHandle, VkHandle, device::Device};
 
+/// Memory location for buffer/image allocations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryLocation {
+    /// GPU-only memory (fast, not accessible from CPU)
+    GpuOnly,
+    /// CPU to GPU memory (host-visible, can be written from CPU)
+    CpuToGpu,
+    /// GPU to CPU memory (host-visible, can be read from CPU)
+    GpuToCpu,
+}
+
 pub struct MemoryAllocator {
     allocator: Mutex<gpu_allocator::vulkan::Allocator>,
 }
@@ -33,12 +44,18 @@ impl MemoryAllocator {
     pub fn allocate(
         self: &Arc<Self>,
         requirements: vk::MemoryRequirements,
-        location: gpu_allocator::MemoryLocation,
+        location: MemoryLocation,
     ) -> MemoryAllocation {
+        let gpu_location = match location {
+            MemoryLocation::GpuOnly => gpu_allocator::MemoryLocation::GpuOnly,
+            MemoryLocation::CpuToGpu => gpu_allocator::MemoryLocation::CpuToGpu,
+            MemoryLocation::GpuToCpu => gpu_allocator::MemoryLocation::GpuToCpu,
+        };
+        
         let allocation_desc = gpu_allocator::vulkan::AllocationCreateDesc {
             name: "MemoryAllocation",
             requirements,
-            location,
+            location: gpu_location,
             linear: true,
             allocation_scheme: gpu_allocator::vulkan::AllocationScheme::GpuAllocatorManaged,
         };
@@ -56,8 +73,8 @@ impl MemoryAllocator {
 }
 
 pub struct MemoryAllocation {
-    allocator: Weak<MemoryAllocator>,
-    allocation: Option<gpu_allocator::vulkan::Allocation>,
+    pub(crate) allocator: Weak<MemoryAllocator>,
+    pub(crate) allocation: Option<gpu_allocator::vulkan::Allocation>,
 }
 
 impl MemoryAllocation {

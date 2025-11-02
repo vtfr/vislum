@@ -1,73 +1,51 @@
 use std::sync::Arc;
 
-use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
+use ash::vk;
+use vislum_render_rhi::{
+    buffer::{Buffer, BufferCreateInfo},
     device::Device,
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
+    memory::MemoryAllocator,
 };
 
 /// A trait for objects that own a buffer.
 pub trait TypedBufferOwner<T> {
     /// Returns the buffer associated with the object.
-    fn buffer(&self) -> &Subbuffer<T>;
+    fn buffer(&self) -> &Arc<Buffer>;
 }
 
 /// A typed uniform buffer.
 pub struct Uniform<T> {
     device: Arc<Device>,
-    buffer: Subbuffer<T>,
+    buffer: Arc<Buffer>,
 }
 
-
-impl<T> TypedBufferOwner<T> for Uniform<T> 
-where 
-    T: BufferContents, 
-    {
-    fn buffer(&self) -> &Subbuffer<T> {
+impl<T> TypedBufferOwner<T> for Uniform<T> {
+    fn buffer(&self) -> &Arc<Buffer> {
         &self.buffer
     }
 }
 
-impl<T> Uniform<T> 
-where 
-    T: BufferContents,
-{
-    pub fn new(device: Arc<Device>, allocator: Arc<dyn MemoryAllocator>) -> Arc<Self> {
-        let buffer = create_device_buffer::<T>(device.clone(), allocator);
+impl<T> Uniform<T> {
+    pub fn new(
+        device: Arc<Device>,
+        allocator: Arc<MemoryAllocator>,
+    ) -> Arc<Self>
+    where
+        T: bytemuck::Pod,
+    {
+        let buffer = Buffer::new(
+            device.clone(),
+            allocator,
+            BufferCreateInfo {
+                size: std::mem::size_of::<T>() as u64,
+                usage: vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::UNIFORM_BUFFER,
+                flags: vk::BufferCreateFlags::empty(),
+            },
+        );
 
         Arc::new(Self {
             device,
             buffer,
         })
     }
-}
-
-fn create_device_buffer<T>(
-    device: Arc<Device>,
-    allocator: Arc<dyn MemoryAllocator>,
-) -> Subbuffer<[u8]>
-where
-    T: BufferContents,
-{
-    let buffer = Buffer::new_sized::<T>(
-        allocator,
-        BufferCreateInfo {
-            usage: BufferUsage::TRANSFER_DST | BufferUsage::UNIFORM_BUFFER,
-            ..Default::default()
-        },
-        AllocationCreateInfo {
-            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-            ..Default::default()
-        },
-    )
-    .unwrap();
-
-    // Tag this object.
-    if device.instance().enabled_extensions().ext_debug_utils {
-        device
-            .set_debug_utils_object_name(buffer.buffer(), Some("Buffer"))
-            .unwrap();
-    }
-
-    buffer.into_bytes()
 }

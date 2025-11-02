@@ -2,16 +2,18 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, memory::{MemoryAllocation, MemoryAllocator}};
+use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, memory::{MemoryAllocation, MemoryAllocator}, swapchain::Swapchain};
 
 /// The owner of an image.
-enum ImageOwner {
+enum ImageStorage {
     /// The image is owned by the user.
     User {
         memory: MemoryAllocation,
     },
-    /// The image is owned by the swapchain.
-    Swapchain, 
+    /// The image was created from a swapchain image.
+    Swapchain {
+        swapchain: Arc<Swapchain>,
+    }
 }
 
 pub struct ImageCreateInfo {
@@ -49,7 +51,7 @@ impl Default for ImageCreateInfo {
 pub struct Image {
     device: Arc<Device>,
     image: DebugWrapper<vk::Image>,
-    owner: ImageOwner,
+    owner: ImageStorage,
 }
 
 impl Image {
@@ -58,7 +60,7 @@ impl Image {
         device: Arc<Device>,
         allocator: Arc<MemoryAllocator>,
         create_info: ImageCreateInfo,
-    ) -> Self {
+    ) -> Arc<Self> {
         let vk_create_info = vk::ImageCreateInfo::default()
             .image_type(create_info.image_type)
             .format(create_info.format)
@@ -79,10 +81,11 @@ impl Image {
             device.ash_handle().get_image_memory_requirements(image)
         };
 
+        use crate::memory::MemoryLocation;
         // Allocate memory for the image
         let memory = allocator.allocate(
             memory_requirements,
-            gpu_allocator::MemoryLocation::GpuOnly,
+            MemoryLocation::GpuOnly,
         );
 
         // Bind memory to the image
@@ -93,22 +96,30 @@ impl Image {
                 .unwrap();
         }
 
-        Self {
+        Arc::new(Self {
             device,
             image: DebugWrapper(image),
-            owner: ImageOwner::User {
+            owner: ImageStorage::User {
                 memory,
             },
-        }
+        })
+    }
+
+    pub fn from_swapchain_image(swapchain: Arc<Swapchain>, swapchain_image: vk::Image) -> Arc<Self> {
+        Arc::new(Self {
+            device: swapchain.device().clone(),
+            image: DebugWrapper(swapchain_image),
+            owner: ImageStorage::Swapchain {
+                swapchain,
+            },
+        })
     }
 
     /// Creates a new image from a raw Vulkan handle (e.g., from a swapchain).
-    pub fn from_raw(device: Arc<Device>, image: vk::Image) -> Self {
-        Self {
-            device,
-            image: DebugWrapper(image),
-            owner: ImageOwner::Swapchain,
-        }
+    /// Note: For swapchain images, use from_swapchain_image instead.
+    #[allow(unreachable_code, unused_variables)]
+    pub fn from_raw(_device: Arc<Device>, _image: vk::Image) -> Arc<Self> {
+        unreachable!("from_raw should not be used for swapchain images - use from_swapchain_image")
     }
 
     /// Returns the device associated with the image.
@@ -129,12 +140,12 @@ impl Drop for Image {
     fn drop(&mut self) {
         // Only destroy the image if we own it (not if it came from a swapchain)
         match &self.owner {
-            ImageOwner::User { .. } => {
+            ImageStorage::User { .. } => {
                 unsafe {
                     self.device.ash_handle().destroy_image(self.image.0, None);
                 }
             }
-            ImageOwner::Swapchain => {
+            ImageStorage::Swapchain { .. } => {
                 // Don't destroy swapchain images as they're managed by the swapchain
             }
         }

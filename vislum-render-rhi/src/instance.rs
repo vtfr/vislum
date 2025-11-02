@@ -16,7 +16,7 @@ impl_extensions! {
 }
 
 pub struct Library {
-    entry: ash::Entry,
+    pub(crate) entry: ash::Entry,
 }
 
 impl Library {
@@ -68,6 +68,11 @@ impl Instance {
         });
 
         physical_devices.iter().cloned()
+    }
+
+    /// Returns the library (entry) associated with this instance.
+    pub fn library(&self) -> &Arc<Library> {
+        &self.entry
     }
 }
 

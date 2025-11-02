@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use vulkano::{
+use ash::vk;
+use vislum_render_rhi::{
+    buffer::{Buffer, BufferCreateInfo},
     device::Device,
-    image::{Image, view::ImageView},
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
+    image::{Image, ImageCreateInfo},
+    memory::{MemoryAllocator, MemoryLocation},
 };
 
 use crate::resource::{
@@ -18,13 +20,13 @@ pub mod mesh;
 
 pub struct ResourceManager {
     device: Arc<Device>,
-    allocator: Arc<dyn MemoryAllocator>,
+    allocator: Arc<MemoryAllocator>,
     textures: ResourcePool<Texture>,
     meshes: ResourcePool<Mesh>,
 }
 
 impl ResourceManager {
-    pub fn new(device: Arc<Device>, allocator: Arc<dyn MemoryAllocator>) -> Self {
+    pub fn new(device: Arc<Device>, allocator: Arc<MemoryAllocator>) -> Self {
         Self {
             device,
             allocator,
@@ -33,33 +35,87 @@ impl ResourceManager {
         }
     }
 
+    /// Creates a new texture and returns the resource id and the staging buffer
+    /// with the data uploaded to it.
+    /// 
+    /// Caller is responsible for uploading the data to the staging buffer.
     pub fn create_texture(
         &mut self,
         format: TextureFormat,
         dimensions: TextureDimensions,
-    ) -> ResourceId<Texture> {
-        let image = vulkano::image::Image::new(
+        data: &[u8],
+    ) -> (ResourceId<Texture>, Arc<Buffer>) {
+        self.create_texture_with_extent(format, dimensions, data, None)
+    }
+
+    pub fn create_texture_with_extent(
+        &mut self,
+        format: TextureFormat,
+        dimensions: TextureDimensions,
+        data: &[u8],
+        extent: Option<[u32; 3]>,
+    ) -> (ResourceId<Texture>, Arc<Buffer>) {
+        // For 2D textures, calculate dimensions from data size if not provided
+        let extent = match extent {
+            Some(ext) => ext,
+            None => match dimensions {
+                TextureDimensions::D2 => {
+                    // Assume square texture - calculate from data size
+                    let pixel_count = data.len() / 4; // 4 bytes per RGBA pixel
+                    let side = (pixel_count as f32).sqrt() as u32;
+                    let side = side.max(1);
+                    [side, side, 1]
+                }
+                TextureDimensions::D3 => {
+                    // For 3D, use a reasonable default
+                    [1024, 1024, 1024]
+                }
+            }
+        };
+
+        use vislum_render_rhi::image::ImageCreateInfo;
+        use ash::vk;
+        
+        let image = Image::new(
+            self.device.clone(),
             self.allocator.clone(),
-            vulkano::image::ImageCreateInfo {
+            ImageCreateInfo {
                 image_type: dimensions.into(),
                 format: format.into(),
-                extent: [1024, 1024, 1],
+                extent: vk::Extent3D {
+                    width: extent[0],
+                    height: extent[1],
+                    depth: extent[2],
+                },
                 mip_levels: 1,
                 array_layers: 1,
-                usage: vulkano::image::ImageUsage::TRANSFER_DST
-                    | vulkano::image::ImageUsage::SAMPLED,
-                ..Default::default()
+                samples: vk::SampleCountFlags::TYPE_1,
+                tiling: vk::ImageTiling::OPTIMAL,
+                usage: vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+                flags: vk::ImageCreateFlags::empty(),
             },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-                ..Default::default()
+        );
+
+        let id = self.textures.insert(Texture { image });
+
+        // Create staging buffer with host-visible memory
+        let staging = Buffer::new_with_location(
+            self.device.clone(),
+            self.allocator.clone(),
+            BufferCreateInfo {
+                size: data.len() as u64,
+                usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                flags: vk::BufferCreateFlags::empty(),
             },
-        )
-        .unwrap();
+            MemoryLocation::CpuToGpu,
+        );
 
-        let view = ImageView::new_default(image.clone()).unwrap();
+        // Write data to staging buffer
+        unsafe {
+            staging.write(data);
+        }
 
-        self.textures.insert(Texture { image, view })
+        (id, staging)
     }
 
     pub fn resolve_texture_image(&self, id: ResourceId<Texture>) -> Option<Arc<Image>> {
@@ -71,7 +127,7 @@ impl ResourceManager {
         vertex_count: usize,
         index_count: usize,
     ) -> ResourceId<Mesh> {
-        let mesh = Mesh::new(self.allocator.clone(), vertex_count, index_count);
+        let mesh = Mesh::new(self.device.clone(), self.allocator.clone(), vertex_count, index_count);
         self.meshes.insert(mesh)
     }
 

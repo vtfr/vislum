@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 ash = { workspace = true }
+ash-window = { workspace = true }
 bitflags = { workspace = true }
 smallvec = { workspace = true }
 gpu-allocator = { workspace = true, features = ["vulkan"] }
+winit = { workspace = true }

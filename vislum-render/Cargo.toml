@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-vulkano = { workspace = true }
+vislum-render-rhi = { path = "../vislum-render-rhi" }
 bitflags = { workspace = true }
 serde = { workspace = true }
 smallvec = { workspace = true }
@@ -14,5 +14,5 @@ thiserror = { workspace = true }
 slotmap = { workspace = true }
 crossbeam-channel = { workspace = true }
 winit = { workspace = true }
-bytemuck = "1.24.0"
+bytemuck = { version = "1.24.0", features = ["derive"] }
 ash = { workspace = true }

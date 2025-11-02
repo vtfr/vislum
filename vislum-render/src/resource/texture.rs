@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use vulkano::image::{Image, view::ImageView};
-
-
+use ash::vk;
+use vislum_render_rhi::image::Image;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TextureFormat {
@@ -12,15 +11,13 @@ pub enum TextureFormat {
     Rgb8Srgb,
 }
 
-impl Into<vulkano::format::Format> for TextureFormat {
-    fn into(self) -> vulkano::format::Format {
-        use vulkano::format::Format as F;
-
+impl Into<vk::Format> for TextureFormat {
+    fn into(self) -> vk::Format {
         match self {
-            TextureFormat::Rgba8Unorm => F::R8G8B8A8_UNORM,
-            TextureFormat::Rgba8Srgb => F::R8G8B8A8_SRGB,
-            TextureFormat::Rgb8Unorm => F::R8G8B8_UNORM,
-            TextureFormat::Rgb8Srgb => F::R8G8B8_SRGB,
+            TextureFormat::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
+            TextureFormat::Rgba8Srgb => vk::Format::R8G8B8A8_SRGB,
+            TextureFormat::Rgb8Unorm => vk::Format::R8G8B8_UNORM,
+            TextureFormat::Rgb8Srgb => vk::Format::R8G8B8_SRGB,
         }
     }
 }
@@ -31,17 +28,15 @@ pub enum TextureDimensions {
     D3,
 }
 
-impl Into<vulkano::image::ImageType> for TextureDimensions {
-    fn into(self) -> vulkano::image::ImageType {
-        use vulkano::image::ImageType as IT;
+impl Into<vk::ImageType> for TextureDimensions {
+    fn into(self) -> vk::ImageType {
         match self {
-            TextureDimensions::D2 => IT::Dim2d,
-            TextureDimensions::D3 => IT::Dim3d,
+            TextureDimensions::D2 => vk::ImageType::TYPE_2D,
+            TextureDimensions::D3 => vk::ImageType::TYPE_3D,
         }
     }
 }
 
 pub struct Texture {
     pub(crate) image: Arc<Image>,
-    pub(crate) view: Arc<ImageView>,
 }

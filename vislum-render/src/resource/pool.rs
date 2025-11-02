@@ -1,12 +1,6 @@
-
-use std::{marker::PhantomData, sync::Arc};
+use std::marker::PhantomData;
 
 use slotmap::SlotMap;
-use vulkano::{
-    device::Device,
-    image::{Image, ImageCreateInfo, ImageUsage, view::ImageView},
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
-};
 
 slotmap::new_key_type! {
     struct ResourceKey;

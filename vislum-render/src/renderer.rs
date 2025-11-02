@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use vulkano::{device::{Device, Queue}, memory::allocator::MemoryAllocator};
+use vislum_render_rhi::{
+    device::Device,
+    queue::Queue,
+    memory::MemoryAllocator,
+};
 
 use crate::{resource::ResourceManager, scene::{SceneCommand, RenderCommand}};
 
@@ -8,7 +12,7 @@ use crate::{resource::ResourceManager, scene::{SceneCommand, RenderCommand}};
 pub struct Renderer {
     device: Arc<Device>,
     queue: Arc<Queue>,
-    allocator: Arc<dyn MemoryAllocator>,
+    allocator: Arc<MemoryAllocator>,
     resource_manager: ResourceManager,
 }
 

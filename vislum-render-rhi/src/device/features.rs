@@ -254,6 +254,15 @@ impl PhysicalDeviceFeaturesFfi {
             create_info = create_info.push_next(vk13);
         }
 
+        // KHR dynamic rendering extension (if extension is enabled and NOT using Vulkan 1.3)
+        // In Vulkan 1.3, dynamic rendering is part of the core features, so we shouldn't include
+        // the KHR extension feature struct to avoid conflicts.
+        if api_version < Version::V1_3 && extensions.iter_c_strs().any(|name| name == ash::khr::dynamic_rendering::NAME) {
+            let khr_dynamic_rendering = self.khr_dynamic_rendering.get_or_insert_default();
+            khr_dynamic_rendering.dynamic_rendering = if features.dynamic_rendering { vk::TRUE } else { vk::FALSE };
+            create_info = create_info.push_next(khr_dynamic_rendering);
+        }
+
         create_info
     }
 

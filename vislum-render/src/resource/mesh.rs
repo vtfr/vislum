@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
-use vulkano::{
-    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
-    memory::allocator::{AllocationCreateInfo, MemoryAllocator, MemoryTypeFilter},
-};
+use ash::vk;
+use vislum_render_rhi::{buffer::Buffer, memory::MemoryAllocator};
 
 /// A vertex with position, normal, and UV coordinates.
 #[repr(C)]
-#[derive(BufferContents, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
@@ -16,49 +14,50 @@ pub struct Vertex {
 
 /// A mesh containing vertex and index data.
 pub struct Mesh {
-    pub vertex_buffer: Subbuffer<[Vertex]>,
-    pub index_buffer: Subbuffer<[u32]>,
+    pub vertex_buffer: Arc<Buffer>,
+    pub index_buffer: Arc<Buffer>,
+    pub vertex_count: usize,
+    pub index_count: usize,
 }
 
 impl Mesh {
     /// Creates a new mesh with empty device-local buffers.
     /// Data must be uploaded separately using the upload system.
     pub fn new(
-        allocator: Arc<dyn MemoryAllocator>,
+        device: Arc<vislum_render_rhi::device::Device>,
+        allocator: Arc<MemoryAllocator>,
         vertex_count: usize,
         index_count: usize,
     ) -> Self {
+        use vislum_render_rhi::buffer::BufferCreateInfo;
+
         // Create vertex buffer
-        let vertex_buffer = Buffer::new_slice::<Vertex>(
+        let vertex_buffer = Buffer::new(
+            device.clone(),
             allocator.clone(),
             BufferCreateInfo {
-                usage: BufferUsage::VERTEX_BUFFER | BufferUsage::TRANSFER_DST,
-                ..Default::default()
+                size: (vertex_count * std::mem::size_of::<Vertex>()) as u64,
+                usage: vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                flags: vk::BufferCreateFlags::empty(),
             },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-                ..Default::default()
-            },
-            vertex_count as u64,
-        ).expect("Failed to create vertex buffer");
+        );
 
         // Create index buffer
-        let index_buffer = Buffer::new_slice::<u32>(
+        let index_buffer = Buffer::new(
+            device,
             allocator,
             BufferCreateInfo {
-                usage: BufferUsage::INDEX_BUFFER | BufferUsage::TRANSFER_DST,
-                ..Default::default()
+                size: (index_count * std::mem::size_of::<u32>()) as u64,
+                usage: vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                flags: vk::BufferCreateFlags::empty(),
             },
-            AllocationCreateInfo {
-                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
-                ..Default::default()
-            },
-            index_count as u64,
-        ).expect("Failed to create index buffer");
+        );
 
         Self {
             vertex_buffer,
             index_buffer,
+            vertex_count,
+            index_count,
         }
     }
 }
