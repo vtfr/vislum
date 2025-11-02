@@ -2,48 +2,51 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, memory::{MemoryAllocation, MemoryAllocator}, swapchain::Swapchain};
+use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, extent::Extent3D, format::Format, image_view::ImageType, memory::{MemoryAllocation, MemoryAllocator, MemoryLocation}, swapchain::Swapchain, vk_enum_flags};
+
+vk_enum_flags! {
+    pub struct ImageUsage: ash::vk::ImageUsageFlags {
+        COLOR_ATTACHMENT => COLOR_ATTACHMENT,
+        TRANSFER_DST => TRANSFER_DST,
+        TRANSFER_SRC => TRANSFER_SRC,
+        SAMPLED => SAMPLED,
+    }
+}
 
 /// The owner of an image.
 enum ImageStorage {
     /// The image is owned by the user.
     User {
+        #[allow(dead_code)]
         memory: MemoryAllocation,
     },
     /// The image was created from a swapchain image.
     Swapchain {
+        #[allow(dead_code)]
         swapchain: Arc<Swapchain>,
     }
 }
 
 pub struct ImageCreateInfo {
-    pub image_type: vk::ImageType,
-    pub format: vk::Format,
-    pub extent: vk::Extent3D,
+    pub dimensions: ImageType,
+    pub format: Format,
+    pub extent: Extent3D,
     pub mip_levels: u32,
     pub array_layers: u32,
-    pub samples: vk::SampleCountFlags,
-    pub tiling: vk::ImageTiling,
-    pub usage: vk::ImageUsageFlags,
-    pub flags: vk::ImageCreateFlags,
+    // pub samples: vk::SampleCountFlags,
+    // pub tiling: vk::ImageTiling,
+    pub usage: ImageUsage,
 }
 
 impl Default for ImageCreateInfo {
     fn default() -> Self {
         Self {
-            image_type: vk::ImageType::TYPE_2D,
-            format: vk::Format::R8G8B8A8_UNORM,
-            extent: vk::Extent3D {
-                width: 1024,
-                height: 1024,
-                depth: 1,
-            },
+            dimensions: ImageType::D2,
+            format: Format::Rgba8Unorm,
+            extent: Extent3D::default(),
             mip_levels: 1,
             array_layers: 1,
-            samples: vk::SampleCountFlags::TYPE_1,
-            tiling: vk::ImageTiling::OPTIMAL,
-            usage: vk::ImageUsageFlags::empty(),
-            flags: vk::ImageCreateFlags::empty(),
+            usage: ImageUsage::empty(),
         }
     }
 }
@@ -60,17 +63,17 @@ impl Image {
         device: Arc<Device>,
         allocator: Arc<MemoryAllocator>,
         create_info: ImageCreateInfo,
+        memory_location: MemoryLocation,
     ) -> Arc<Self> {
         let vk_create_info = vk::ImageCreateInfo::default()
-            .image_type(create_info.image_type)
-            .format(create_info.format)
-            .extent(create_info.extent)
+            .image_type(create_info.dimensions.to_vk())
+            .format(create_info.format.to_vk())
+            .extent(create_info.extent.to_vk())
             .mip_levels(create_info.mip_levels)
             .array_layers(create_info.array_layers)
-            .samples(create_info.samples)
-            .tiling(create_info.tiling)
-            .usage(create_info.usage)
-            .flags(create_info.flags);
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .usage(create_info.usage.to_vk());
 
         let image = unsafe {
             device.ash_handle().create_image(&vk_create_info, None).unwrap()
@@ -81,11 +84,10 @@ impl Image {
             device.ash_handle().get_image_memory_requirements(image)
         };
 
-        use crate::memory::MemoryLocation;
         // Allocate memory for the image
         let memory = allocator.allocate(
             memory_requirements,
-            MemoryLocation::GpuOnly,
+            memory_location,
         );
 
         // Bind memory to the image
@@ -105,7 +107,7 @@ impl Image {
         })
     }
 
-    pub fn from_swapchain_image(swapchain: Arc<Swapchain>, swapchain_image: vk::Image) -> Arc<Self> {
+    pub(crate) fn from_swapchain_image(swapchain: Arc<Swapchain>, swapchain_image: vk::Image) -> Arc<Self> {
         Arc::new(Self {
             device: swapchain.device().clone(),
             image: DebugWrapper(swapchain_image),
@@ -113,13 +115,6 @@ impl Image {
                 swapchain,
             },
         })
-    }
-
-    /// Creates a new image from a raw Vulkan handle (e.g., from a swapchain).
-    /// Note: For swapchain images, use from_swapchain_image instead.
-    #[allow(unreachable_code, unused_variables)]
-    pub fn from_raw(_device: Arc<Device>, _image: vk::Image) -> Arc<Self> {
-        unreachable!("from_raw should not be used for swapchain images - use from_swapchain_image")
     }
 
     /// Returns the device associated with the image.

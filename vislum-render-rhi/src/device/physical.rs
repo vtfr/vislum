@@ -7,7 +7,7 @@ use crate::{
     AshHandle, Version, VkHandle,
     device::{
         DeviceExtensions, DeviceFeatures, PhysicalDeviceFeaturesFfi,
-        PhysicalDeviceProperties, QueueFamilyProperties,
+        PhysicalDeviceProperties, PhysicalDeviceType, QueueFamilyProperties, QueueFlags,
     },
     instance::Instance,
 };
@@ -60,7 +60,8 @@ impl PhysicalDevice {
                 driver_version: Version::from_vk(properties.driver_version),
                 vendor_id: properties.vendor_id,
                 device_id: properties.device_id,
-                device_type: properties.device_type,
+                device_type: PhysicalDeviceType::from_vk(properties.device_type)
+                    .unwrap_or(PhysicalDeviceType::OTHER),
                 device_name,
             }
         })
@@ -78,7 +79,7 @@ impl PhysicalDevice {
             capabilities
                 .into_iter()
                 .map(|properties| QueueFamilyProperties {
-                    queue_flags: properties.queue_flags,
+                    queue_flags: QueueFlags::from_vk(properties.queue_flags),
                     queue_count: properties.queue_count,
                 })
                 .collect()

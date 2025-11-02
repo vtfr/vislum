@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{DebugWrapper, device::Device};
+use crate::{AshHandle, DebugWrapper, VkHandle, device::Device};
 
 pub struct SamplerCreateInfo {
     pub mag_filter: vk::Filter,
@@ -35,8 +35,12 @@ impl Sampler {
             sampler: DebugWrapper(sampler),
         })
     }
+}
 
-    pub fn sampler_handle(&self) -> vk::Sampler {
+impl VkHandle for Sampler {
+    type Handle = vk::Sampler;
+
+    fn vk_handle(&self) -> Self::Handle {
         self.sampler.0
     }
 }

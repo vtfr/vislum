@@ -12,7 +12,7 @@ macro_rules! impl_extensions {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, Default)]
         $vis struct $ident {
             $(
-                $field: bool,
+                pub $field: bool,
             )*
         }
 
@@ -108,6 +108,158 @@ macro_rules! impl_extensions {
                 }
 
                 write!(f, "]")
+            }
+        }
+    };
+}
+
+/// Macro to create an enum that maps to/from a Vulkan enum.
+#[macro_export]
+macro_rules! vk_enum {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $ident:ident: $vk_type:ty {
+            $(
+                $(#[$variant_meta:meta])*
+                $variant:ident => $vk_value:ident,
+            )*
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        $vis enum $ident {
+            $(
+                $(#[$variant_meta])*
+                $variant,
+            )*
+        }
+
+        impl $ident {
+            /// Converts from a Vulkan enum value.
+            pub const fn from_vk(value: $vk_type) -> Option<Self> {
+                match value {
+                    $(
+                        <$vk_type>::$vk_value => Some(Self::$variant),
+                    )*
+                    _ => None,
+                }
+            }
+
+            /// Converts to a Vulkan enum value.
+            pub const fn to_vk(self) -> $vk_type {
+                match self {
+                    $(
+                        Self::$variant => <$vk_type>::$vk_value,
+                    )*
+                }
+            }
+        }
+    };
+}
+
+/// Macro to create a flags type that maps to/from Vulkan flags.
+#[macro_export]
+macro_rules! vk_enum_flags {
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $ident:ident: $vk_type:ty {
+            $(
+                $(#[$field_meta:meta])*
+                $field:ident => $vk_flag:ident,
+            )*
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
+        #[repr(transparent)]
+        $vis struct $ident($vk_type);
+
+        impl $ident {
+            $(
+                $(#[$field_meta])*
+                pub const $field: Self = Self(<$vk_type>::$vk_flag);
+            )*
+
+            /// Creates an empty flags set.
+            #[inline]
+            pub const fn empty() -> Self {
+                Self(<$vk_type>::empty())
+            }
+
+            /// Checks if any flag is set.
+            #[inline]
+            pub const fn is_empty(&self) -> bool {
+                self.0.is_empty()
+            }
+
+            /// Checks if a specific flag is set.
+            #[inline]
+            pub const fn contains(&self, other: Self) -> bool {
+                self.0.contains(other.0)
+            }
+
+            #[inline]
+            pub fn union(&self, other: Self) -> Self {
+                Self(self.0 | other.0)
+            }
+
+            /// Converts from Vulkan flags.
+            #[inline]
+            pub const fn from_vk(flags: $vk_type) -> Self {
+                Self(flags)
+            }
+
+            /// Converts to Vulkan flags.
+            #[inline]
+            pub const fn to_vk(self) -> $vk_type {
+                self.0
+            }
+        }
+
+        impl Default for $ident {
+            fn default() -> Self {
+                Self::empty()
+            }
+        }
+
+        impl std::ops::BitOr for $ident {
+            type Output = Self;
+
+            #[inline]
+            fn bitor(self, rhs: Self) -> Self::Output {
+                Self(self.0 | rhs.0)
+            }
+        }
+
+        impl std::ops::BitOrAssign for $ident {
+            #[inline]
+            fn bitor_assign(&mut self, rhs: Self) {
+                self.0 |= rhs.0;
+            }
+        }
+
+        impl std::ops::BitAnd for $ident {
+            type Output = Self;
+
+            #[inline]
+            fn bitand(self, rhs: Self) -> Self::Output {
+                Self(self.0 & rhs.0)
+            }
+        }
+
+        impl std::ops::BitAndAssign for $ident {
+            #[inline]
+            fn bitand_assign(&mut self, rhs: Self) {
+                self.0 &= rhs.0;
+            }
+        }
+
+        impl std::ops::Not for $ident {
+            type Output = Self;
+
+            #[inline]
+            fn not(self) -> Self::Output {
+                Self(!self.0)
             }
         }
     };

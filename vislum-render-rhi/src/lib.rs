@@ -3,6 +3,8 @@ use std::ops::Deref;
 pub mod buffer;
 pub mod command;
 pub mod device;
+pub mod extent;
+pub mod format;
 pub mod image;
 pub mod image_view;
 pub mod sampler;

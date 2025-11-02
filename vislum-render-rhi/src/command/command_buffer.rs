@@ -2,7 +2,14 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, sync::{Fence, Semaphore}, queue::Queue};
+use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, sync::{Fence, Semaphore}, queue::Queue, vk_enum};
+
+vk_enum! {
+    pub enum CommandBufferLevel: ash::vk::CommandBufferLevel {
+        PRIMARY => PRIMARY,
+        SECONDARY => SECONDARY,
+    }
+}
 
 pub struct CommandPool {
     device: Arc<Device>,
@@ -27,10 +34,10 @@ impl CommandPool {
     }
 
     /// Allocates a command buffer from this pool.
-    pub fn allocate(&self, level: vk::CommandBufferLevel) -> CommandBuffer {
+    pub fn allocate(&self, level: CommandBufferLevel) -> CommandBuffer {
         let allocate_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(self.pool.0)
-            .level(level)
+            .level(level.to_vk())
             .command_buffer_count(1);
 
         let command_buffers = unsafe {

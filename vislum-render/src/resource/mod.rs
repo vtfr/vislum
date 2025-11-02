@@ -99,7 +99,7 @@ impl ResourceManager {
         let id = self.textures.insert(Texture { image });
 
         // Create staging buffer with host-visible memory
-        let staging = Buffer::new_with_location(
+        let staging = Buffer::new(
             self.device.clone(),
             self.allocator.clone(),
             BufferCreateInfo {

@@ -37,12 +37,13 @@ struct QuadVertex {
 enum AppState {
     #[default]
     Uninitialized,
-    Ready {
-        window: Arc<Window>,
-        render_context: RenderContext,
-        surface: Arc<Surface>,
-        swapchain: Arc<Swapchain>,
-        texture_id: ResourceId<Texture>,
+        Ready {
+            window: Arc<Window>,
+            render_context: RenderContext,
+            surface: Arc<Surface>,
+            swapchain: Arc<Swapchain>,
+            swapchain_images: Vec<Arc<vislum_render_rhi::image::Image>>,
+            texture_id: ResourceId<Texture>,
         // Direct ash handles for things not yet in RHI
         device: Arc<vislum_render_rhi::device::Device>,
         queue: Arc<Queue>,
@@ -143,7 +144,7 @@ impl ApplicationHandler for App {
                         .capabilities()
                             .enumerate()
                             .find_map(|(idx, q)| {
-                            if q.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                            if q.queue_flags.contains(vislum_render_rhi::device::QueueFlags::GRAPHICS)
                                 && surface.get_physical_device_surface_support(p, idx as u32)
                             {
                                     Some(idx)
@@ -155,10 +156,10 @@ impl ApplicationHandler for App {
                     Some((p.clone(), queue_family_index as u32))
                 })
                 .min_by_key(|(p, _)| match p.properties().device_type {
-                    vk::PhysicalDeviceType::DISCRETE_GPU => 0,
-                    vk::PhysicalDeviceType::INTEGRATED_GPU => 1,
-                    vk::PhysicalDeviceType::VIRTUAL_GPU => 2,
-                    vk::PhysicalDeviceType::CPU => 3,
+                    vislum_render_rhi::device::PhysicalDeviceType::DISCRETE_GPU => 0,
+                    vislum_render_rhi::device::PhysicalDeviceType::INTEGRATED_GPU => 1,
+                    vislum_render_rhi::device::PhysicalDeviceType::VIRTUAL_GPU => 2,
+                    vislum_render_rhi::device::PhysicalDeviceType::CPU => 3,
                     _ => 4,
                 })
                 .unwrap();
@@ -200,7 +201,7 @@ impl ApplicationHandler for App {
 
             // Create swapchain
             log::info!("Creating swapchain...");
-            let swapchain = Swapchain::new(
+            let (swapchain, swapchain_images) = Swapchain::new(
                 device.clone(),
                 surface.clone(),
                 SwapchainCreateInfo {
@@ -210,7 +211,7 @@ impl ApplicationHandler for App {
                     old_swapchain: None,
                 },
             );
-            log::info!("Swapchain created with {} images", swapchain.images().len());
+            log::info!("Swapchain created with {} images", swapchain_images.len());
 
             // Create RenderContext
             log::info!("Creating render context...");
@@ -261,23 +262,23 @@ impl ApplicationHandler for App {
             let index_data_size = (indices.len() * std::mem::size_of::<u32>()) as u64;
             
             // Create staging buffers using RHI
-            let vertex_staging_buffer = vislum_render_rhi::buffer::Buffer::new_with_location(
+            let vertex_staging_buffer = vislum_render_rhi::buffer::Buffer::new(
                 device.clone(),
                 allocator.clone(),
                 vislum_render_rhi::buffer::BufferCreateInfo {
                     size: vertex_data_size,
-                    usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                    usage: vislum_render_rhi::buffer::BufferUsage::TRANSFER_SRC,
                     flags: vk::BufferCreateFlags::empty(),
                 },
                 MemoryLocation::CpuToGpu,
             );
             
-            let index_staging_buffer = vislum_render_rhi::buffer::Buffer::new_with_location(
+            let index_staging_buffer = vislum_render_rhi::buffer::Buffer::new(
                 device.clone(),
                 allocator.clone(),
                 vislum_render_rhi::buffer::BufferCreateInfo {
                     size: index_data_size,
-                    usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                    usage: vislum_render_rhi::buffer::BufferUsage::TRANSFER_SRC,
                     flags: vk::BufferCreateFlags::empty(),
                 },
                 MemoryLocation::CpuToGpu,
@@ -295,7 +296,7 @@ impl ApplicationHandler for App {
                 allocator.clone(),
                 vislum_render_rhi::buffer::BufferCreateInfo {
                     size: vertex_data_size,
-                    usage: vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                    usage: vislum_render_rhi::buffer::BufferUsage::VERTEX_BUFFER | vislum_render_rhi::buffer::BufferUsage::TRANSFER_DST,
                     flags: vk::BufferCreateFlags::empty(),
                 },
             );
@@ -305,7 +306,7 @@ impl ApplicationHandler for App {
                 allocator.clone(),
                 vislum_render_rhi::buffer::BufferCreateInfo {
                     size: index_data_size,
-                    usage: vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST,
+                    usage: vislum_render_rhi::buffer::BufferUsage::INDEX_BUFFER | vislum_render_rhi::buffer::BufferUsage::TRANSFER_DST,
                     flags: vk::BufferCreateFlags::empty(),
                 },
             );
@@ -313,7 +314,7 @@ impl ApplicationHandler for App {
             // Upload vertex and index data using AutoCommandBuffer
             {
                 let upload_command_pool = CommandPool::new(device.clone(), queue_family_index);
-                let mut upload_command_buffer = upload_command_pool.allocate(vk::CommandBufferLevel::PRIMARY);
+                let mut upload_command_buffer = upload_command_pool.allocate(vislum_render_rhi::command::CommandBufferLevel::PRIMARY);
                 upload_command_buffer.begin(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
                 
                 let mut auto_command_buffer = AutoCommandBuffer::new(upload_command_buffer);
@@ -364,9 +365,9 @@ impl ApplicationHandler for App {
             let image_view = vislum_render_rhi::image_view::ImageView::new(
                 device.clone(),
                 vislum_render_rhi::image_view::ImageViewCreateInfo {
-                    image: texture_image.image_handle(),
+                    image: texture_image,
                     view_type: vk::ImageViewType::TYPE_2D,
-                    format: vk::Format::R8G8B8A8_UNORM,
+                    format: vislum_render_rhi::format::Format::R8G8B8A8Unorm,
                     components: vk::ComponentMapping::default(),
                     subresource_range: vk::ImageSubresourceRange::default()
                         .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -497,14 +498,15 @@ impl ApplicationHandler for App {
             // Write descriptor set using ash
             {
                 // Binding 0: Sampled image
+                use vislum_render_rhi::VkHandle;
                 let image_info = vk::DescriptorImageInfo::default()
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image_view(image_view.image_view_handle());
+                    .image_view(image_view.vk_handle());
                 let image_infos = [image_info];
                 
                 // Binding 1: Sampler
                 let sampler_info = vk::DescriptorImageInfo::default()
-                    .sampler(sampler.sampler_handle());
+                    .sampler(sampler.vk_handle());
                 let sampler_infos = [sampler_info];
                 
                 let writes = [
@@ -657,7 +659,6 @@ impl ApplicationHandler for App {
 
             // Create per-frame sync objects (one set per swapchain image)
             log::info!("Creating per-frame sync objects...");
-            let swapchain_images = swapchain.images();
             let num_frames = swapchain_images.len();
             log::info!("Creating {} sync object sets for {} swapchain images", num_frames, num_frames);
             let mut frame_sync_objects = Vec::with_capacity(num_frames);
@@ -674,6 +675,7 @@ impl ApplicationHandler for App {
                 render_context,
                 surface,
                 swapchain,
+                swapchain_images,
                 texture_id,
                 device,
                 queue,
@@ -717,6 +719,7 @@ impl ApplicationHandler for App {
                 if let AppState::Ready { 
                     render_context, 
                     swapchain,
+                    swapchain_images,
                     device,
                     queue,
                     pipeline,
@@ -763,16 +766,16 @@ impl ApplicationHandler for App {
                     }
 
                     // Get swapchain image
-                    let swapchain_images = swapchain.images();
-                    let swapchain_image = swapchain_images[img_idx as usize];
+                    let swapchain_image = swapchain_images[img_idx as usize].clone();
 
                     // Create image view for swapchain image (using ash directly)
                     log::debug!("Creating swapchain image view...");
                     let swapchain_image_view = {
+                        use vislum_render_rhi::VkHandle;
                         let create_info = vk::ImageViewCreateInfo::default()
-                            .image(swapchain_image)
+                            .image(swapchain_image.vk_handle())
                             .view_type(vk::ImageViewType::TYPE_2D)
-                            .format(swapchain.image_format())
+                            .format(swapchain.image_format().to_vk())
                             .components(vk::ComponentMapping::default())
                             .subresource_range(vk::ImageSubresourceRange::default()
                                 .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -799,7 +802,6 @@ impl ApplicationHandler for App {
                     let descriptor_set_copy = *descriptor_set;
                     let vertex_buffer_clone = vertex_buffer.clone();
                     let index_buffer_clone = index_buffer.clone();
-                    let swapchain_clone = swapchain.clone();
                     let device_clone = device.clone();
 
                     // Add render pass to frame graph
@@ -807,7 +809,7 @@ impl ApplicationHandler for App {
                         "render_quad",
                         |_prepare_context| {
                             struct RenderState {
-                                swapchain_image: vk::Image,
+                                swapchain_image: Arc<vislum_render_rhi::image::Image>,
                                 swapchain_image_view: vk::ImageView,
                                 window_width: u32,
                                 window_height: u32,
@@ -821,15 +823,9 @@ impl ApplicationHandler for App {
                             }
                         },
                         move |execute_context, state| {
-                            // Create temporary Image wrapper for transition
-                            let swapchain_image = vislum_render_rhi::image::Image::from_swapchain_image(
-                                swapchain_clone.clone(),
-                                state.swapchain_image,
-                            );
-
                             // Transition swapchain image to color attachment layout
                             execute_context.command_encoder.transition_image(
-                                &swapchain_image,
+                                &state.swapchain_image,
                                 vk::ImageLayout::UNDEFINED,
                                 vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                                 vk::AccessFlags2::empty(),
@@ -921,7 +917,7 @@ impl ApplicationHandler for App {
 
                             // Transition swapchain image to present layout
                             execute_context.command_encoder.transition_image(
-                                &swapchain_image,
+                                &state.swapchain_image,
                                 vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                                 vk::ImageLayout::PRESENT_SRC_KHR,
                                 vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,

@@ -2,16 +2,26 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, surface::Surface};
+use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, surface::Surface, format::Format, extent::Extent2D, image::{Image, ImageUsage}, vk_enum};
+
+vk_enum! {
+    #[derive(Default)]
+    pub enum PresentMode: vk::PresentModeKHR {
+        #[default]
+        FIFO => FIFO,
+        MAILBOX => MAILBOX,
+        IMMEDIATE => IMMEDIATE,
+    }
+}
 
 pub struct SwapchainCreateInfo {
     /// Minimum number of images in the swapchain.
     /// Defaults to 2 if not specified.
     pub min_image_count: Option<u32>,
     /// Desired present mode. If not specified, FIFO will be used.
-    pub present_mode: Option<vk::PresentModeKHR>,
+    pub present_mode: Option<PresentMode>,
     /// Desired image usage flags. If not specified, COLOR_ATTACHMENT will be used.
-    pub image_usage: Option<vk::ImageUsageFlags>,
+    pub image_usage: Option<ImageUsage>,
     /// Previous swapchain to replace (for resize operations).
     pub old_swapchain: Option<Arc<Swapchain>>,
 }
@@ -21,19 +31,19 @@ pub struct Swapchain {
     swapchain: DebugWrapper<vk::SwapchainKHR>,
     swapchain_loader: ash::khr::swapchain::Device,
     surface: Arc<Surface>,
-    images: Vec<vk::Image>,
-    image_format: vk::Format,
-    image_extent: vk::Extent2D,
+    image_format: Format,
+    image_extent: Extent2D,
 }
 
 impl Swapchain {
     /// Creates a new swapchain from a surface.
     /// Most parameters are automatically derived from the surface capabilities.
+    /// Returns the swapchain and its images.
     pub fn new(
         device: Arc<Device>,
         surface: Arc<Surface>,
         create_info: SwapchainCreateInfo,
-    ) -> Arc<Self> {
+    ) -> (Arc<Self>, Vec<Arc<Image>>) {
         let physical_device = device.physical_device();
         
         // Get surface capabilities and formats
@@ -50,6 +60,9 @@ impl Swapchain {
             })
             .copied()
             .unwrap_or_else(|| formats[0]);
+        
+        let image_format = Format::from_vk(surface_format.format)
+            .unwrap_or(Format::Rgba8Unorm);
 
         // Choose image count
         let mut image_count = create_info
@@ -60,7 +73,7 @@ impl Swapchain {
         }
 
         // Choose extent
-        let image_extent = if capabilities.current_extent.width != u32::MAX {
+        let image_extent_vk = if capabilities.current_extent.width != u32::MAX {
             capabilities.current_extent
         } else {
             vk::Extent2D {
@@ -68,9 +81,10 @@ impl Swapchain {
                 height: capabilities.min_image_extent.height.max(600).min(capabilities.max_image_extent.height),
             }
         };
+        let image_extent = Extent2D::from_vk(image_extent_vk);
 
         // Choose present mode - prefer FIFO (guaranteed), or Mailbox (vsync), or first available
-        let present_mode = create_info.present_mode.unwrap_or_else(|| {
+        let present_mode_vk = create_info.present_mode.map(|p| p.to_vk()).unwrap_or_else(|| {
             if present_modes.contains(&vk::PresentModeKHR::MAILBOX) {
                 vk::PresentModeKHR::MAILBOX
             } else if present_modes.contains(&vk::PresentModeKHR::FIFO) {
@@ -83,8 +97,8 @@ impl Swapchain {
         // Choose image usage - prefer COLOR_ATTACHMENT, but respect capabilities
         let requested_usage = create_info
             .image_usage
-            .unwrap_or(vk::ImageUsageFlags::COLOR_ATTACHMENT);
-        let image_usage = requested_usage & capabilities.supported_usage_flags;
+            .unwrap_or(ImageUsage::COLOR_ATTACHMENT);
+        let image_usage_vk = requested_usage.to_vk() & capabilities.supported_usage_flags;
 
         // Use current transform from capabilities
         let pre_transform = capabilities.current_transform;
@@ -124,13 +138,13 @@ impl Swapchain {
             .min_image_count(image_count)
             .image_format(surface_format.format)
             .image_color_space(surface_format.color_space)
-            .image_extent(image_extent)
+            .image_extent(image_extent_vk)
             .image_array_layers(1)
-            .image_usage(image_usage)
+            .image_usage(image_usage_vk)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
             .composite_alpha(composite_alpha)
-            .present_mode(present_mode)
+            .present_mode(present_mode_vk)
             .clipped(true)
             .old_swapchain(old_swapchain);
 
@@ -138,19 +152,25 @@ impl Swapchain {
             swapchain_loader.create_swapchain(&create_info_vk, None)
         }.unwrap();
 
-        let images = unsafe {
+        let images_vk = unsafe {
             swapchain_loader.get_swapchain_images(swapchain)
         }.unwrap();
 
-        Arc::new(Self {
-            device,
+        let swapchain_arc = Arc::new(Self {
+            device: device.clone(),
             swapchain: DebugWrapper(swapchain),
             swapchain_loader,
             surface,
-            images,
-            image_format: surface_format.format,
+            image_format,
             image_extent,
-        })
+        });
+
+        // Create Image wrappers for swapchain images
+        let images: Vec<Arc<Image>> = images_vk.iter()
+            .map(|&image_vk| Image::from_swapchain_image(swapchain_arc.clone(), image_vk))
+            .collect();
+
+        (swapchain_arc, images)
     }
 
     /// Acquires the next image from the swapchain.
@@ -196,18 +216,14 @@ impl Swapchain {
         }.unwrap()
     }
 
-    /// Gets all swapchain images.
-    pub fn images(&self) -> &[vk::Image] {
-        &self.images
-    }
 
     /// Gets the image format.
-    pub fn image_format(&self) -> vk::Format {
+    pub fn image_format(&self) -> Format {
         self.image_format
     }
 
     /// Gets the image extent.
-    pub fn image_extent(&self) -> vk::Extent2D {
+    pub fn image_extent(&self) -> Extent2D {
         self.image_extent
     }
 
