@@ -33,14 +33,15 @@ impl<T> Uniform<T> {
     where
         T: bytemuck::Pod,
     {
+        use vislum_render_rhi::memory::MemoryLocation;
         let buffer = Buffer::new(
             device.clone(),
             allocator,
             BufferCreateInfo {
                 size: std::mem::size_of::<T>() as u64,
-                usage: vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::UNIFORM_BUFFER,
-                flags: vk::BufferCreateFlags::empty(),
+                usage: vislum_render_rhi::buffer::BufferUsage::TRANSFER_DST,
             },
+            MemoryLocation::GpuOnly,
         );
 
         Arc::new(Self {

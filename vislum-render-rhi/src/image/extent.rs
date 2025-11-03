@@ -6,6 +6,11 @@ pub struct Extent2D {
 
 impl Extent2D {
     #[inline]
+    pub const fn new(width: u32, height: u32) -> Self {
+        Self { width, height }
+    }
+
+    #[inline]
     pub const fn to_vk(self) -> ash::vk::Extent2D {
         ash::vk::Extent2D {
             width: self.width,

@@ -191,7 +191,11 @@ impl ApplicationHandler for App {
 
             // Get queue (device creates queue family 0, so get queue 0)
             log::info!("Getting queue...");
-            let queue = Arc::new(device.get_queue(queue_family_index, 0));
+            use vislum_render_rhi::AshHandle;
+            let queue_handle = unsafe {
+                device.ash_handle().get_device_queue(queue_family_index, 0)
+            };
+            let queue = Arc::new(Queue::new(device.clone(), queue_handle));
             log::info!("Queue obtained");
 
             // Create memory allocator
@@ -218,7 +222,6 @@ impl ApplicationHandler for App {
             let mut render_context = RenderContext::new(
                 device.clone(),
                 queue.clone(),
-                allocator.clone(),
             );
             log::info!("Render context created");
 
@@ -268,7 +271,6 @@ impl ApplicationHandler for App {
                 vislum_render_rhi::buffer::BufferCreateInfo {
                     size: vertex_data_size,
                     usage: vislum_render_rhi::buffer::BufferUsage::TRANSFER_SRC,
-                    flags: vk::BufferCreateFlags::empty(),
                 },
                 MemoryLocation::CpuToGpu,
             );
@@ -279,7 +281,6 @@ impl ApplicationHandler for App {
                 vislum_render_rhi::buffer::BufferCreateInfo {
                     size: index_data_size,
                     usage: vislum_render_rhi::buffer::BufferUsage::TRANSFER_SRC,
-                    flags: vk::BufferCreateFlags::empty(),
                 },
                 MemoryLocation::CpuToGpu,
             );
@@ -297,8 +298,8 @@ impl ApplicationHandler for App {
                 vislum_render_rhi::buffer::BufferCreateInfo {
                     size: vertex_data_size,
                     usage: vislum_render_rhi::buffer::BufferUsage::VERTEX_BUFFER | vislum_render_rhi::buffer::BufferUsage::TRANSFER_DST,
-                    flags: vk::BufferCreateFlags::empty(),
                 },
+                MemoryLocation::GpuOnly,
             );
 
             let index_buffer = vislum_render_rhi::buffer::Buffer::new(
@@ -307,15 +308,16 @@ impl ApplicationHandler for App {
                 vislum_render_rhi::buffer::BufferCreateInfo {
                     size: index_data_size,
                     usage: vislum_render_rhi::buffer::BufferUsage::INDEX_BUFFER | vislum_render_rhi::buffer::BufferUsage::TRANSFER_DST,
-                    flags: vk::BufferCreateFlags::empty(),
                 },
+                MemoryLocation::GpuOnly,
             );
             
             // Upload vertex and index data using AutoCommandBuffer
             {
                 let upload_command_pool = CommandPool::new(device.clone(), queue_family_index);
-                let mut upload_command_buffer = upload_command_pool.allocate(vislum_render_rhi::command::CommandBufferLevel::PRIMARY);
-                upload_command_buffer.begin(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+                use vislum_render_rhi::command::{CommandBufferLevel, CommandBufferUsageFlags};
+                let mut upload_command_buffer = upload_command_pool.allocate(CommandBufferLevel::PRIMARY);
+                upload_command_buffer.begin(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
                 
                 let mut auto_command_buffer = AutoCommandBuffer::new(upload_command_buffer);
                 
@@ -341,10 +343,10 @@ impl ApplicationHandler for App {
                 // Submit upload
                 let upload_fence = Fence::unsignaled(device.clone());
                 auto_command_buffer.command_buffer().submit(
-                    &queue,
-                    &[],
-                    &[],
-                    Some(&upload_fence),
+                    queue.clone(),
+                    vec![],
+                    vec![],
+                    Some(upload_fence.clone()),
                 );
                 
                 // Wait for upload to complete
@@ -590,8 +592,9 @@ impl ApplicationHandler for App {
                     .height(600.0)
                     .max_depth(1.0);
 
+                use vislum_render_rhi::image::Extent2D;
                 let scissor = vk::Rect2D::default()
-                    .extent(vk::Extent2D { width: 800, height: 600 });
+                    .extent(Extent2D::new(800, 600).to_vk());
 
                 let viewports = [viewport];
                 let scissors = [scissor];
@@ -797,41 +800,47 @@ impl ApplicationHandler for App {
                     // Set up render pass for this frame using frame graph
                     // Note: We add the pass fresh each frame because frame graph drains nodes
                     log::debug!("Adding render pass for frame...");
-                    let pipeline_copy = *pipeline;
-                    let pipeline_layout_copy = *pipeline_layout;
-                    let descriptor_set_copy = *descriptor_set;
-                    let vertex_buffer_clone = vertex_buffer.clone();
-                    let index_buffer_clone = index_buffer.clone();
-                    let device_clone = device.clone();
 
                     // Add render pass to frame graph
-                    render_context.add_pass(
-                        "render_quad",
-                        |_prepare_context| {
-                            struct RenderState {
-                                swapchain_image: Arc<vislum_render_rhi::image::Image>,
-                                swapchain_image_view: vk::ImageView,
-                                window_width: u32,
-                                window_height: u32,
-                            }
+                    struct RenderQuadNode {
+                        swapchain_image: Arc<vislum_render_rhi::image::Image>,
+                        swapchain_image_view: vk::ImageView,
+                        window_width: u32,
+                        window_height: u32,
+                        pipeline: vk::Pipeline,
+                        pipeline_layout: vk::PipelineLayout,
+                        descriptor_set: vk::DescriptorSet,
+                        vertex_buffer: Arc<vislum_render_rhi::buffer::Buffer>,
+                        index_buffer: Arc<vislum_render_rhi::buffer::Buffer>,
+                    }
 
-                            RenderState {
-                                swapchain_image,
-                                swapchain_image_view,
-                                window_width,
-                                window_height,
-                            }
-                        },
-                        move |execute_context, state| {
+                    impl vislum_render::graph::FrameNode for RenderQuadNode {
+                        fn name(&self) -> std::borrow::Cow<'static, str> {
+                            "render_quad".into()
+                        }
+
+                        fn prepare(&self, _context: &mut vislum_render::graph::PrepareContext) -> Box<dyn FnMut(&mut vislum_render::graph::ExecuteContext<'_>) + 'static> {
+                            let swapchain_image = self.swapchain_image.clone();
+                            let swapchain_image_view = self.swapchain_image_view;
+                            let window_width = self.window_width;
+                            let window_height = self.window_height;
+                            let pipeline = self.pipeline;
+                            let pipeline_layout = self.pipeline_layout;
+                            let descriptor_set = self.descriptor_set;
+                            let vertex_buffer = self.vertex_buffer.clone();
+                            let index_buffer = self.index_buffer.clone();
+
+                            Box::new(move |execute_context| {
+                            use vislum_render_rhi::command::types::{ImageLayout, AccessFlags2, PipelineStageFlags2};
                             // Transition swapchain image to color attachment layout
                             execute_context.command_encoder.transition_image(
-                                &state.swapchain_image,
-                                vk::ImageLayout::UNDEFINED,
-                                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                                vk::AccessFlags2::empty(),
-                                vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                                vk::PipelineStageFlags2::TOP_OF_PIPE,
-                                vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+                                &swapchain_image,
+                                ImageLayout::Undefined,
+                                ImageLayout::ColorAttachmentOptimal,
+                                AccessFlags2::NONE,
+                                AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                                PipelineStageFlags2::TOP_OF_PIPE,
+                                PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
                             );
 
                             // Use AutoCommandBuffer for rendering commands
@@ -844,17 +853,15 @@ impl ApplicationHandler for App {
                                 },
                             };
                             let color_attachment = vk::RenderingAttachmentInfo::default()
-                                .image_view(state.swapchain_image_view)
+                                .image_view(swapchain_image_view)
                                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                                 .load_op(vk::AttachmentLoadOp::CLEAR)
                                 .store_op(vk::AttachmentStoreOp::STORE)
                                 .clear_value(clear_value);
 
+                            use vislum_render_rhi::image::Extent2D;
                             let render_area = vk::Rect2D::default()
-                                .extent(vk::Extent2D {
-                                    width: state.window_width,
-                                    height: state.window_height,
-                                });
+                                .extent(Extent2D::new(window_width, window_height).to_vk());
                             let color_attachments = [color_attachment];
                             let rendering_info = vk::RenderingInfo::default()
                                 .color_attachments(&color_attachments)
@@ -863,32 +870,26 @@ impl ApplicationHandler for App {
 
                             auto_cmd_buf.begin_rendering(&rendering_info);
                             
+                            use vislum_render_rhi::command::types::{Viewport, Rect2D, PipelineBindPoint, IndexType};
                             // Set viewport
-                            let viewport = vk::Viewport::default()
-                                .width(state.window_width as f32)
-                                .height(state.window_height as f32)
-                                .max_depth(1.0);
+                            let viewport = Viewport::new(0.0, 0.0, window_width as f32, window_height as f32);
                             auto_cmd_buf.set_viewport(0, &[viewport]);
 
                             // Set scissor
-                            let scissor = vk::Rect2D::default()
-                                .extent(vk::Extent2D {
-                                    width: state.window_width,
-                                    height: state.window_height,
-                                });
+                            let scissor = Rect2D::new([0, 0], Extent2D::new(window_width, window_height));
                             auto_cmd_buf.set_scissor(0, &[scissor]);
                             
                             // Bind pipeline
                             auto_cmd_buf.bind_pipeline(
-                                vk::PipelineBindPoint::GRAPHICS,
-                                pipeline_copy,
+                                PipelineBindPoint::Graphics,
+                                pipeline,
                             );
                             
                             // Bind descriptor set
-                            let descriptor_sets = [descriptor_set_copy];
+                            let descriptor_sets = [descriptor_set];
                             auto_cmd_buf.bind_descriptor_sets(
-                                vk::PipelineBindPoint::GRAPHICS,
-                                pipeline_layout_copy,
+                                PipelineBindPoint::Graphics,
+                                pipeline_layout,
                                 0,
                                 &descriptor_sets,
                                 &[],
@@ -898,15 +899,15 @@ impl ApplicationHandler for App {
                             let vertex_offsets = [0u64];
                             auto_cmd_buf.bind_vertex_buffers_buffers(
                                 0,
-                                &[&vertex_buffer_clone],
+                                &[&vertex_buffer],
                                 &vertex_offsets,
                             );
                         
                             // Bind index buffer
                             auto_cmd_buf.bind_index_buffer_buffer(
-                                &index_buffer_clone,
+                                &index_buffer,
                                 0,
-                                vk::IndexType::UINT32,
+                                IndexType::Uint32,
                             );
                             
                             // Draw
@@ -917,16 +918,33 @@ impl ApplicationHandler for App {
 
                             // Transition swapchain image to present layout
                             execute_context.command_encoder.transition_image(
-                                &state.swapchain_image,
-                                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                                vk::ImageLayout::PRESENT_SRC_KHR,
-                                vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                                vk::AccessFlags2::empty(),
-                                vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-                                vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
+                                &swapchain_image,
+                                ImageLayout::ColorAttachmentOptimal,
+                                ImageLayout::PresentSrcKhr,
+                                AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                                AccessFlags2::NONE,
+                                PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+                                PipelineStageFlags2::BOTTOM_OF_PIPE,
                             );
-                        },
-                    );
+                            })
+                        }
+                    }
+
+                    let pipeline_copy = *pipeline;
+                    let pipeline_layout_copy = *pipeline_layout;
+                    let descriptor_set_copy = *descriptor_set;
+
+                    render_context.add_pass(RenderQuadNode {
+                        swapchain_image,
+                        swapchain_image_view,
+                        window_width,
+                        window_height,
+                        pipeline: pipeline_copy,
+                        pipeline_layout: pipeline_layout_copy,
+                        descriptor_set: descriptor_set_copy,
+                        vertex_buffer: vertex_buffer.clone(),
+                        index_buffer: index_buffer.clone(),
+                    });
 
                     // Execute render pass
                     log::debug!("Executing and submitting frame graph...");

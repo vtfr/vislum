@@ -47,14 +47,16 @@ impl Uploader {
         data: &[u8],
     ) {
         // Create staging buffer
+        use vislum_render_rhi::buffer::BufferUsage;
+        use vislum_render_rhi::memory::MemoryLocation;
         let staging = Buffer::new(
             self.device.clone(),
             self.allocator.clone(),
             BufferCreateInfo {
                 size: data.len() as u64,
-                usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                flags: vk::BufferCreateFlags::empty(),
+                usage: BufferUsage::TRANSFER_SRC,
             },
+            MemoryLocation::CpuToGpu,
         );
 
         // TODO: Map and copy data to staging buffer

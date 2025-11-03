@@ -150,9 +150,9 @@ impl FrameGraph {
         // Prepare the nodes
         let prepared: SmallVec<[PreparedFrameNode; 8]> = self.nodes
             .drain(..)
-            .map(|mut node| {
+            .map(|node| {
                 let mut prepare_context = PrepareContext::new(resource_manager);
-                let execute = node.prepare(&mut prepare_context)
+                let execute = node.prepare(&mut prepare_context);
 
                 PreparedFrameNode {
                     name: node.name(),
@@ -177,8 +177,8 @@ impl FrameGraph {
         // Prepare the execute context
         let mut execute_context = ExecuteContext { command_encoder };
 
-        // Execute the nodes
-        for mut node in self.nodes.drain(..) {
+        // Execute the prepared nodes
+        for mut node in prepared {
             node.execute(&mut execute_context);
         }
 

@@ -73,39 +73,50 @@ impl ResourceManager {
             }
         };
 
-        use vislum_render_rhi::image::ImageCreateInfo;
-        use ash::vk;
+        use vislum_render_rhi::image::{ImageCreateInfo, ImageType, ImageUsage, Extent3D};
+        
+        // Convert TextureFormat to Format
+        let rhi_format = match format {
+            TextureFormat::Rgba8Unorm => vislum_render_rhi::image::Format::Rgba8Unorm,
+            TextureFormat::Rgba8Srgb => vislum_render_rhi::image::Format::Rgba8Srgb,
+            TextureFormat::Rgb8Unorm => vislum_render_rhi::image::Format::Rgb8Unorm,
+            TextureFormat::Rgb8Srgb => vislum_render_rhi::image::Format::Rgb8Srgb,
+        };
+        
+        // Convert TextureDimensions to ImageType
+        let rhi_dimensions = match dimensions {
+            TextureDimensions::D2 => ImageType::D2,
+            TextureDimensions::D3 => ImageType::D3,
+        };
         
         let image = Image::new(
             self.device.clone(),
             self.allocator.clone(),
             ImageCreateInfo {
-                image_type: dimensions.into(),
-                format: format.into(),
-                extent: vk::Extent3D {
+                dimensions: rhi_dimensions,
+                format: rhi_format,
+                extent: Extent3D {
                     width: extent[0],
                     height: extent[1],
                     depth: extent[2],
                 },
                 mip_levels: 1,
                 array_layers: 1,
-                samples: vk::SampleCountFlags::TYPE_1,
-                tiling: vk::ImageTiling::OPTIMAL,
-                usage: vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
-                flags: vk::ImageCreateFlags::empty(),
+                usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
             },
+            MemoryLocation::GpuOnly,
         );
 
         let id = self.textures.insert(Texture { image });
 
         // Create staging buffer with host-visible memory
+        use vislum_render_rhi::buffer::BufferUsage;
         let staging = Buffer::new(
             self.device.clone(),
             self.allocator.clone(),
             BufferCreateInfo {
                 size: data.len() as u64,
-                usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                flags: vk::BufferCreateFlags::empty(),
+                usage: BufferUsage::TRANSFER_SRC,
             },
             MemoryLocation::CpuToGpu,
         );

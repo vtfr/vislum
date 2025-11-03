@@ -8,7 +8,7 @@ use vislum_render_rhi::{
     image::Image,
 };
 
-use crate::{graph::{ExecuteContext, FrameGraph, PrepareContext, pass::FrameGraphSubmitInfo}, resource::{ResourceManager, pool::ResourceId, texture::{Texture, TextureDimensions, TextureFormat}}};
+use crate::{graph::{ExecuteContext, FrameGraph, PrepareContext, pass::FrameGraphSubmitInfo, FrameNode}, resource::{ResourceManager, pool::ResourceId, texture::{Texture, TextureDimensions, TextureFormat}}};
 
 pub struct RenderContext {
     device: Arc<Device>,
@@ -22,8 +22,8 @@ impl RenderContext {
     pub fn new(
         device: Arc<Device>,
         queue: Arc<Queue>,
-        allocator: Arc<MemoryAllocator>,
     ) -> Self {
+        let allocator = MemoryAllocator::new(device.clone());
         let resource_manager = ResourceManager::new(device.clone(), allocator.clone());
         let frame_graph = FrameGraph::new(device.clone(), queue.clone(), allocator.clone());
 
@@ -37,21 +37,15 @@ impl RenderContext {
     }
 
     /// Adds a new pass to the frame graph.
-    pub fn add_pass<S, E, P>(
-        &mut self,
-        name: impl Into<Cow<'static, str>>,
-        prepare: P,
-        execute: E,
-    ) where
-        S: 'static,
-        P: Fn(&mut PrepareContext) -> S,
-        E: for<'g, 's> Fn(&mut ExecuteContext<'g>, &'s mut S) + 'static,
+    pub fn add_pass<F>(&mut self, node: F)
+    where
+        F: FrameNode + 'static,
     {
-        self.frame_graph.add_pass(&self.resource_manager, name, prepare, execute);
+        self.frame_graph.add_pass(node);
     }
 
     pub fn execute_and_submit(&mut self, submit_info: FrameGraphSubmitInfo) {
-        self.frame_graph.execute(submit_info);
+        self.frame_graph.execute(&self.resource_manager, submit_info);
     }
 
     /// Uploads data to a buffer.
@@ -81,71 +75,68 @@ impl RenderContext {
 
         let (id, staging_buffer) = self.resource_manager.create_texture_with_extent(format, dimensions, data, Some(extent));
 
-        struct UploadTextureState {
+        struct UploadTextureNode {
+            texture_id: ResourceId<Texture>,
             staging_buffer: Arc<vislum_render_rhi::buffer::Buffer>,
-            destination: Arc<Image>,
             extent: vk::Extent3D,
         }
 
-        let extent_vk = vk::Extent3D {
-            width: extent[0],
-            height: extent[1],
-            depth: extent[2],
-        };
-
-        // Temporary hack to keep the staging buffer alive until the upload pass is executed.
-        //
-        // We'll fix this later.
-        std::mem::drop(staging_buffer.clone());
-
-        self.frame_graph.add_pass(
-            &self.resource_manager, 
-            "upload_texture", 
-            |prepare_context| {
-                let destination = prepare_context.write_texture(id).unwrap();
-
-                UploadTextureState {
-                    staging_buffer: staging_buffer.clone(),
-                    destination,
-                    extent: extent_vk,
-                }
-            },
-            |execute_context, state| {
-                // Transition image to transfer destination layout
-                // Copy staging buffer to image (AutoCommandBuffer handles barriers)
-                let copy_region = vk::BufferImageCopy::default()
-                    .buffer_offset(0)
-                    .buffer_row_length(0) // 0 means tightly packed
-                    .buffer_image_height(0) // 0 means tightly packed
-                    .image_subresource(vk::ImageSubresourceLayers::default()
-                        .aspect_mask(vk::ImageAspectFlags::COLOR)
-                        .mip_level(0)
-                        .base_array_layer(0)
-                        .layer_count(1))
-                    .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-                    .image_extent(state.extent);
-                
-                use vislum_render_rhi::command::types::ImageLayout;
-                execute_context.command_encoder.copy_buffer_to_image(
-                    &state.staging_buffer,
-                    &state.destination,
-                    ImageLayout::TransferDstOptimal,
-                    &[copy_region],
-                );
-                
-                // Transition image to shader read layout
-                use vislum_render_rhi::command::types::{ImageLayout, AccessFlags2, PipelineStageFlags2};
-                execute_context.command_encoder.transition_image(
-                    &state.destination,
-                    ImageLayout::TransferDstOptimal,
-                    ImageLayout::ShaderReadOnlyOptimal,
-                    AccessFlags2::TRANSFER_WRITE,
-                    AccessFlags2::SHADER_READ,
-                    PipelineStageFlags2::TRANSFER,
-                    PipelineStageFlags2::FRAGMENT_SHADER,
-                );
+        impl FrameNode for UploadTextureNode {
+            fn name(&self) -> Cow<'static, str> {
+                "upload_texture".into()
             }
-        );
+
+            fn prepare(&self, context: &mut PrepareContext) -> Box<dyn FnMut(&mut ExecuteContext<'_>) + 'static> {
+                let destination = context.write_texture(self.texture_id).unwrap();
+                let staging_buffer = self.staging_buffer.clone();
+                let extent = self.extent;
+
+                Box::new(move |execute_context| {
+                    // Copy staging buffer to image (AutoCommandBuffer handles barriers)
+                    let copy_region = vk::BufferImageCopy::default()
+                        .buffer_offset(0)
+                        .buffer_row_length(0) // 0 means tightly packed
+                        .buffer_image_height(0) // 0 means tightly packed
+                        .image_subresource(vk::ImageSubresourceLayers::default()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .mip_level(0)
+                            .base_array_layer(0)
+                            .layer_count(1))
+                        .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+                        .image_extent(extent);
+                    
+                    use vislum_render_rhi::command::types::ImageLayout;
+                    execute_context.command_encoder.copy_buffer_to_image(
+                        &staging_buffer,
+                        &destination,
+                        ImageLayout::TransferDstOptimal,
+                        &[copy_region],
+                    );
+                    
+                    // Transition image to shader read layout
+                    use vislum_render_rhi::command::types::{AccessFlags2, PipelineStageFlags2};
+                    execute_context.command_encoder.transition_image(
+                        &destination,
+                        ImageLayout::TransferDstOptimal,
+                        ImageLayout::ShaderReadOnlyOptimal,
+                        AccessFlags2::TRANSFER_WRITE,
+                        AccessFlags2::SHADER_READ,
+                        PipelineStageFlags2::TRANSFER,
+                        PipelineStageFlags2::FRAGMENT_SHADER,
+                    );
+                })
+            }
+        }
+
+        self.add_pass(UploadTextureNode {
+            texture_id: id,
+            staging_buffer,
+            extent: vk::Extent3D {
+                width: extent[0],
+                height: extent[1],
+                depth: extent[2],
+            },
+        });
         
         id
     }
