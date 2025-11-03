@@ -49,7 +49,7 @@ impl Texture {
         allocator: Arc<MemoryAllocator>,
         info: TextureCreateInfo,
         data: &[u8],
-    ) -> (Arc<Self>, TextureUploadTask) {
+    ) -> (Self, TextureUploadTask) {
         let rhi_format = match info.format {
             TextureFormat::Rgba8Unorm => ImageFormat::Rgba8Unorm,
             TextureFormat::Rgba8Srgb => ImageFormat::Rgba8Srgb,
@@ -76,13 +76,11 @@ impl Texture {
             vislum_render_rhi::memory::MemoryLocation::GpuOnly,
         );
 
-        let texture = Arc::new(Texture { image });
-
         // Create staging buffer with host-visible memory
         let staging = Buffer::new_staging_with_data(device, allocator, data);
 
         let upload_task = TextureUploadTask {
-            texture: texture.clone(),
+            image: image.clone(),
             staging_buffer: staging,
             extent: vk::Extent3D {
                 width: info.extent.width,
@@ -91,7 +89,7 @@ impl Texture {
             },
         };
 
-        (texture, upload_task)
+        (Texture { image }, upload_task)
     }
 
     #[inline]
@@ -101,7 +99,7 @@ impl Texture {
 }
 
 pub struct TextureUploadTask {
-    texture: Arc<Texture>,
+    image: Arc<Image>,
     staging_buffer: Arc<Buffer>,
     extent: vk::Extent3D,
 }
@@ -114,8 +112,8 @@ impl FrameNode for TextureUploadTask {
     fn prepare(
         &self,
         _context: &mut PrepareContext,
-    ) -> Box<dyn FnMut(&mut ExecuteContext<'_>) + 'static> {
-        let destination = self.texture.image.clone();
+    ) -> Box<dyn FnMut(&mut ExecuteContext) + 'static> {
+        let destination = self.image.clone();
         let staging_buffer = self.staging_buffer.clone();
         let extent = self.extent;
 
@@ -124,7 +122,7 @@ impl FrameNode for TextureUploadTask {
             use vislum_render_rhi::command::types::{
                 AccessFlags2, ImageLayout, PipelineStageFlags2,
             };
-            execute_context.command_encoder.transition_image(
+            execute_context.command_buffer.transition_image(
                 &destination,
                 ImageLayout::Undefined,
                 ImageLayout::TransferDstOptimal,
@@ -149,7 +147,7 @@ impl FrameNode for TextureUploadTask {
                 .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
                 .image_extent(extent);
 
-            execute_context.command_encoder.copy_buffer_to_image(
+            execute_context.command_buffer.copy_buffer_to_image(
                 &staging_buffer,
                 &destination,
                 ImageLayout::TransferDstOptimal,
@@ -157,7 +155,7 @@ impl FrameNode for TextureUploadTask {
             );
 
             // Transition image to shader read layout
-            execute_context.command_encoder.transition_image(
+            execute_context.command_buffer.transition_image(
                 &destination,
                 ImageLayout::TransferDstOptimal,
                 ImageLayout::ShaderReadOnlyOptimal,

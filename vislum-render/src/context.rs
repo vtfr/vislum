@@ -7,7 +7,7 @@ use vislum_render_rhi::{
     image::Image,
 };
 
-use crate::{graph::{FrameGraph, pass::FrameGraphSubmitInfo, FrameNode}, resource::{ResourceManager, pool::ResourceId, texture::{Texture, TextureCreateInfo, TextureUploadTask}}};
+use crate::{graph::{FrameGraph, pass::FrameGraphSubmitInfo, FrameNode}, resource::{ResourceManager, pool::ResourceId, texture::{Texture, TextureCreateInfo}, mesh::{Mesh, MeshUploadTask, Vertex}}};
 
 pub struct RenderContext {
     device: Arc<Device>,
@@ -47,17 +47,31 @@ impl RenderContext {
         self.frame_graph.execute(&self.resource_manager, submit_info);
     }
 
-    /// Creates a texture with data and returns the resource id and upload task.
+    /// Creates a texture with data and returns the resource id.
+    /// The upload task is automatically added to the frame graph.
     pub fn create_texture_with_data(
         &mut self,
         info: TextureCreateInfo,
         data: &[u8],
-    ) -> (ResourceId<Arc<Texture>>, TextureUploadTask) {
-        self.resource_manager.create_texture_with_data(info, data)
+    ) -> ResourceId<Texture> {
+        let (id, upload_task) = self.resource_manager.create_texture_with_data(info, data);
+        self.frame_graph.add_pass(upload_task);
+        id
     }
 
-
-    pub fn get_texture_image(&self, id: ResourceId<Arc<Texture>>) -> Option<Arc<Image>> {
+    pub fn get_texture_image(&self, id: ResourceId<Texture>) -> Option<Arc<Image>> {
         self.resource_manager.resolve_texture_image(id)
+    }
+
+    /// Creates a mesh with data and returns the resource id.
+    /// The upload task is automatically added to the frame graph.
+    pub fn create_mesh(
+        &mut self,
+        vertices: impl IntoIterator<Item = Vertex>,
+        indices: impl IntoIterator<Item = u16>,
+    ) -> ResourceId<Mesh> {
+        let (id, upload_task) = self.resource_manager.create_mesh(vertices, indices);
+        self.frame_graph.add_pass(upload_task);
+        id
     }
 }

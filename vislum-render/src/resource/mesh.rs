@@ -26,7 +26,7 @@ impl Mesh {
         allocator: Arc<MemoryAllocator>,
         vertices: impl IntoIterator<Item = Vertex>,
         indices: impl IntoIterator<Item = u16>,
-    ) -> (Arc<Self>, MeshUploadTask) {
+    ) -> (Self, MeshUploadTask) {
         let vertices = vertices.into_iter().collect::<Vec<_>>();
         let indices = indices.into_iter().collect::<Vec<_>>();
 
@@ -70,15 +70,16 @@ impl Mesh {
             bytemuck::cast_slice(&indices),
         );
 
-        let mesh = Arc::new(Mesh {
-            vertex_buffer,
-            index_buffer,
+        let mesh = Mesh {
+            vertex_buffer: vertex_buffer.clone(),
+            index_buffer: index_buffer.clone(),
             vertex_count,
             index_count,
-        });
+        };
 
         let upload_task = MeshUploadTask {
-            mesh: mesh.clone(),
+            vertex_buffer,
+            index_buffer,
             vertex_staging,
             index_staging,
             vertex_count,
@@ -110,7 +111,8 @@ impl Mesh {
 }
 
 pub struct MeshUploadTask {
-    mesh: Arc<Mesh>,
+    vertex_buffer: Arc<Buffer>,
+    index_buffer: Arc<Buffer>,
     vertex_staging: Arc<Buffer>,
     index_staging: Arc<Buffer>,
     vertex_count: usize,
@@ -122,9 +124,9 @@ impl FrameNode for MeshUploadTask {
         "upload_mesh".into()
     }
 
-    fn prepare(&self, _context: &mut PrepareContext) -> Box<dyn FnMut(&mut ExecuteContext<'_>) + 'static> {
-        let vertex_buffer = self.mesh.vertex_buffer.clone();
-        let index_buffer = self.mesh.index_buffer.clone();
+    fn prepare(&self, _context: &mut PrepareContext) -> Box<dyn FnMut(&mut ExecuteContext) + 'static> {
+        let vertex_buffer = self.vertex_buffer.clone();
+        let index_buffer = self.index_buffer.clone();
         let vertex_staging = self.vertex_staging.clone();
         let index_staging = self.index_staging.clone();
         let vertex_size = (self.vertex_count * std::mem::size_of::<Vertex>()) as u64;
@@ -132,7 +134,7 @@ impl FrameNode for MeshUploadTask {
 
         Box::new(move |execute_context| {
             // Copy vertex buffer
-            execute_context.command_encoder.copy_buffer(
+            execute_context.command_buffer.copy_buffer(
                 &vertex_staging,
                 &vertex_buffer,
                 0,
@@ -141,7 +143,7 @@ impl FrameNode for MeshUploadTask {
             );
 
             // Copy index buffer
-            execute_context.command_encoder.copy_buffer(
+            execute_context.command_buffer.copy_buffer(
                 &index_staging,
                 &index_buffer,
                 0,

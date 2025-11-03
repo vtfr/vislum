@@ -1,7 +1,6 @@
 use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
 use smallvec::SmallVec;
-use ash::vk;
 use vislum_render_rhi::{
     command::{CommandPool, AutoCommandBuffer},
     device::Device,
@@ -12,14 +11,13 @@ use vislum_render_rhi::{
 };
 
 use crate::{
-    graph::{CommandEncoder, ResourceStateTracker},
     resource::{ResourceManager, mesh::Mesh, pool::ResourceId, texture::Texture},
 };
 
 #[derive(Debug)]
 pub enum FramePassResource {
-    Texture(ResourceId<Arc<Texture>>),
-    Mesh(ResourceId<Arc<Mesh>>),
+    Texture(ResourceId<Texture>),
+    Mesh(ResourceId<Mesh>),
     Surface,
 }
 
@@ -41,7 +39,7 @@ impl<'a> PrepareContext<'a> {
         }
     }
 
-    pub fn read_texture(&mut self, id: ResourceId<Arc<Texture>>) -> Option<Arc<Image>> {
+    pub fn read_texture(&mut self, id: ResourceId<Texture>) -> Option<Arc<Image>> {
         self.read.push(FramePassResource::Texture(id));
         self.resource_manager.resolve_texture_image(id)
     }
@@ -52,13 +50,13 @@ impl<'a> PrepareContext<'a> {
     }
 }
 
-/// The conte
-pub struct ExecuteContext<'g> {
-    /// The command encoder to use for executing the pass.
-    pub command_encoder: CommandEncoder<'g>,
+/// The context for executing a frame graph node.
+pub struct ExecuteContext {
+    /// The command buffer to use for executing the pass.
+    pub command_buffer: AutoCommandBuffer,
 }
 
-type ExecuteFn = Box<dyn FnMut(&mut ExecuteContext<'_>) + 'static>;
+type ExecuteFn = Box<dyn FnMut(&mut ExecuteContext) + 'static>;
 
 pub trait FrameNode {
     /// The name of the node.
@@ -111,7 +109,6 @@ pub struct FrameGraph {
     device: Arc<Device>,
     queue: Arc<Queue>,
     command_pool: Arc<CommandPool>,
-    resource_state_traker: ResourceStateTracker,
     nodes: Vec<Box<dyn FrameNode + 'static>>,
     queue_family_index: u32,
 }
@@ -133,7 +130,6 @@ impl FrameGraph {
             queue,
             command_pool,
             nodes: Default::default(),
-            resource_state_traker: Default::default(),
             queue_family_index,
         }
     }
@@ -169,13 +165,9 @@ impl FrameGraph {
         raw_command_buffer.begin(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         
         let auto_command_buffer = AutoCommandBuffer::new(raw_command_buffer);
-        
-        // Create command encoder with our owned resources
-        let command_encoder =
-            CommandEncoder::new(auto_command_buffer, &mut self.resource_state_traker);
 
         // Prepare the execute context
-        let mut execute_context = ExecuteContext { command_encoder };
+        let mut execute_context = ExecuteContext { command_buffer: auto_command_buffer };
 
         // Execute the prepared nodes
         for mut node in prepared {
@@ -183,7 +175,7 @@ impl FrameGraph {
         }
 
         // Get the command buffer back and end recording
-        let mut auto_command_buffer = execute_context.command_encoder.auto_command_buffer();
+        let mut auto_command_buffer = execute_context.command_buffer;
         auto_command_buffer.command_buffer_mut().end();
         let raw_command_buffer = auto_command_buffer.into_command_buffer();
 

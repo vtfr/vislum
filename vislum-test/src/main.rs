@@ -5,15 +5,12 @@ use anyhow::Result;
 use ash::vk;
 use image::GenericImageView;
 use winit::{
-    application::ApplicationHandler,
-    event::{Event, WindowEvent},
-    event_loop::{ActiveEventLoop, EventLoop},
-    window::{Window, WindowId},
+    application::ApplicationHandler, event::{Event, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, raw_window_handle::HasDisplayHandle, window::{Window, WindowId}
 };
 
 use vislum_render::context::RenderContext;
 use vislum_render::graph::pass::FrameGraphSubmitInfo;
-use vislum_render::resource::{pool::ResourceId, texture::{Texture, TextureDimensions, TextureFormat}};
+use vislum_render::resource::{pool::ResourceId, texture::{Texture, TextureDimensions, TextureFormat, TextureCreateInfo}};
 use vislum_render_rhi::{
     instance::{Instance, InstanceExtensions, Library},
     device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, PhysicalDevice},
@@ -105,17 +102,19 @@ impl ApplicationHandler for App {
             
             // Build instance extensions
             let mut instance_extensions = InstanceExtensions::default();
+            match window.display_handle().unwrap().as_raw() {
+                winit::raw_window_handle::RawDisplayHandle::Xlib(_) => {
+                    instance_extensions.khr_xlib_surface = true;
+                }
+                winit::raw_window_handle::RawDisplayHandle::Xcb(_) => {
+                    instance_extensions.khr_xcb_surface = true;
+                }
+                winit::raw_window_handle::RawDisplayHandle::Wayland(_) => {
+                    instance_extensions.khr_wayland_surface = true;
+                }
+                _ => unimplemented!()
+            }
             instance_extensions.khr_surface = true;
-            #[cfg(unix)]
-            {
-                // instance_extensions.khr_wayland_surface = true;
-                instance_extensions.khr_xlib_surface = true;
-                instance_extensions.khr_xcb_surface = true;
-            }
-            #[cfg(windows)]
-            {
-                instance_extensions.khr_win32_surface = true;
-            }
             
             log::info!("Creating Vulkan instance...");
             let instance = Instance::new(library, instance_extensions);
@@ -240,11 +239,13 @@ impl ApplicationHandler for App {
 
             // Create texture using vislum-render
             log::info!("Creating texture...");
-            let texture_id = render_context.create_texture_with_extent(
-                TextureFormat::Rgba8Unorm,
-                TextureDimensions::D2,
+            let texture_id = render_context.create_texture_with_data(
+                TextureCreateInfo {
+                    format: TextureFormat::Rgba8Unorm,
+                    dimensions: TextureDimensions::D2,
+                    extent: vislum_render_rhi::image::Extent3D { width, height, depth: 1 },
+                },
                 image_data,
-                Some([width, height, 1]),
             );
             log::info!("Texture created with id: {:?}", texture_id);
 
@@ -312,52 +313,6 @@ impl ApplicationHandler for App {
                 MemoryLocation::GpuOnly,
             );
             
-            // Upload vertex and index data using AutoCommandBuffer
-            {
-                let upload_command_pool = CommandPool::new(device.clone(), queue_family_index);
-                use vislum_render_rhi::command::{CommandBufferLevel, CommandBufferUsageFlags};
-                let mut upload_command_buffer = upload_command_pool.allocate(CommandBufferLevel::PRIMARY);
-                upload_command_buffer.begin(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-                
-                let mut auto_command_buffer = AutoCommandBuffer::new(upload_command_buffer);
-                
-                // Copy staging buffers to GPU buffers using AutoCommandBuffer
-                auto_command_buffer.copy_buffer(
-                    &vertex_staging_buffer,
-                    &vertex_buffer,
-                    0,
-                    0,
-                    vertex_data_size,
-                );
-                
-                auto_command_buffer.copy_buffer(
-                    &index_staging_buffer,
-                    &index_buffer,
-                    0,
-                    0,
-                    index_data_size,
-                );
-                
-                auto_command_buffer.end();
-                
-                // Submit upload
-                let upload_fence = Fence::unsignaled(device.clone());
-                auto_command_buffer.command_buffer().submit(
-                    queue.clone(),
-                    vec![],
-                    vec![],
-                    Some(upload_fence.clone()),
-                );
-                
-                // Wait for upload to complete
-                upload_fence.wait(u64::MAX);
-                upload_fence.reset();
-            }
-            log::info!("Vertex/index buffers uploaded");
-
-            // Texture upload will happen via frame graph on first frame
-            // No need to execute here - let it accumulate
-
             // Get texture image for creating image view and descriptor set
             log::info!("Getting texture image...");
             let texture_image = render_context.get_texture_image(texture_id).unwrap();
@@ -818,7 +773,7 @@ impl ApplicationHandler for App {
                             "render_quad".into()
                         }
 
-                        fn prepare(&self, _context: &mut vislum_render::graph::PrepareContext) -> Box<dyn FnMut(&mut vislum_render::graph::ExecuteContext<'_>) + 'static> {
+                        fn prepare(&self, _context: &mut vislum_render::graph::PrepareContext) -> Box<dyn FnMut(&mut vislum_render::graph::ExecuteContext) + 'static> {
                             let swapchain_image = self.swapchain_image.clone();
                             let swapchain_image_view = self.swapchain_image_view.clone();
                             let window_width = self.window_width;
@@ -832,7 +787,7 @@ impl ApplicationHandler for App {
                             Box::new(move |execute_context| {
                             use vislum_render_rhi::{VkHandle, command::types::{ImageLayout, AccessFlags2, PipelineStageFlags2}};
                             // Transition swapchain image to color attachment layout
-                            execute_context.command_encoder.transition_image(
+                            execute_context.command_buffer.transition_image(
                                 &swapchain_image,
                                 ImageLayout::Undefined,
                                 ImageLayout::ColorAttachmentOptimal,
@@ -843,7 +798,7 @@ impl ApplicationHandler for App {
                             );
 
                             // Use AutoCommandBuffer for rendering commands
-                            let auto_cmd_buf = execute_context.command_encoder.command_buffer();
+                            let auto_cmd_buf = &mut execute_context.command_buffer;
 
                             // Begin dynamic rendering
                             let clear_value = vk::ClearValue {
@@ -917,7 +872,7 @@ impl ApplicationHandler for App {
                             auto_cmd_buf.end_rendering();
 
                             // Transition swapchain image to present layout
-                            execute_context.command_encoder.transition_image(
+                            execute_context.command_buffer.transition_image(
                                 &swapchain_image,
                                 ImageLayout::ColorAttachmentOptimal,
                                 ImageLayout::PresentSrcKhr,

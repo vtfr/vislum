@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
 use vislum_render_rhi::{
-    buffer::{Buffer, BufferCreateInfo},
     device::Device,
+    memory::MemoryAllocator,
     image::Image,
-    memory::{MemoryAllocator, MemoryLocation},
 };
 
 use crate::resource::{
     pool::{ResourceId, ResourcePool},
-    texture::{Texture, TextureDimensions, TextureFormat, TextureUploadTask, TextureCreateInfo},
+    texture::{Texture, TextureUploadTask, TextureCreateInfo},
     mesh::{Mesh, MeshUploadTask, Vertex},
 };
 
@@ -20,8 +19,8 @@ pub mod mesh;
 pub struct ResourceManager {
     device: Arc<Device>,
     allocator: Arc<MemoryAllocator>,
-    textures: ResourcePool<Arc<Texture>>,
-    meshes: ResourcePool<Arc<Mesh>>,
+    textures: ResourcePool<Texture>,
+    meshes: ResourcePool<Mesh>,
 }
 
 impl ResourceManager {
@@ -39,19 +38,19 @@ impl ResourceManager {
         &mut self,
         info: TextureCreateInfo,
         data: &[u8],
-    ) -> (ResourceId<Arc<Texture>>, TextureUploadTask) {
+    ) -> (ResourceId<Texture>, TextureUploadTask) {
         let (texture, upload_task) = Texture::new_with_data(
             self.device.clone(),
             self.allocator.clone(),
             info,
             data,
         );
-        let id = self.textures.insert(texture.clone());
+        let id = self.textures.insert(texture);
         (id, upload_task)
     }
 
-    pub fn resolve_texture_image(&self, id: ResourceId<Arc<Texture>>) -> Option<Arc<Image>> {
-        self.textures.get(id).and_then(|texture_arc| Some(texture_arc.image.clone()))
+    pub fn resolve_texture_image(&self, id: ResourceId<Texture>) -> Option<Arc<Image>> {
+        self.textures.get(id).map(|texture| texture.image.clone())
     }
 
     /// Creates a mesh with data and returns the resource id and upload task.
@@ -59,7 +58,7 @@ impl ResourceManager {
         &mut self,
         vertices: impl IntoIterator<Item = Vertex>,
         indices: impl IntoIterator<Item = u16>,
-    ) -> (ResourceId<Arc<Mesh>>, MeshUploadTask) {
+    ) -> (ResourceId<Mesh>, MeshUploadTask) {
         let (mesh, upload_task) = Mesh::new(
             self.device.clone(),
             self.allocator.clone(),
@@ -70,7 +69,7 @@ impl ResourceManager {
         (id, upload_task)
     }
 
-    pub fn get_mesh(&self, id: ResourceId<Arc<Mesh>>) -> Option<&Arc<Mesh>> {
+    pub fn get_mesh(&self, id: ResourceId<Mesh>) -> Option<&Mesh> {
         self.meshes.get(id)
     }
 }
