@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
-use ash::vk;
-use vislum_render_rhi::{buffer::{Buffer, BufferUsage}, memory::{MemoryAllocator, MemoryLocation}};
+use vislum_render_rhi::{buffer::{Buffer, BufferCreateInfo, BufferUsage}, memory::{MemoryAllocator, MemoryLocation}};
+use crate::graph::{FrameNode, PrepareContext, ExecuteContext};
 
 /// A vertex with position, normal, and UV coordinates.
 #[repr(C)]
@@ -14,54 +14,140 @@ pub struct Vertex {
 
 /// A mesh containing vertex and index data.
 pub struct Mesh {
-    pub vertex_buffer: Arc<Buffer>,
-    pub index_buffer: Arc<Buffer>,
-    pub vertex_count: usize,
-    pub index_count: usize,
+    vertex_buffer: Arc<Buffer>,
+    index_buffer: Arc<Buffer>,
+    vertex_count: usize,
+    index_count: usize,
 }
 
 impl Mesh {
-    /// Creates a new mesh with empty device-local buffers.
-    /// Data must be uploaded separately using the upload system.
     pub fn new(
         device: Arc<vislum_render_rhi::device::Device>,
         allocator: Arc<MemoryAllocator>,
-        vertex_count: usize,
-        index_count: usize,
-    ) -> Self {
-        use vislum_render_rhi::buffer::BufferCreateInfo;
+        vertices: impl IntoIterator<Item = Vertex>,
+        indices: impl IntoIterator<Item = u16>,
+    ) -> (Arc<Self>, MeshUploadTask) {
+        let vertices = vertices.into_iter().collect::<Vec<_>>();
+        let indices = indices.into_iter().collect::<Vec<_>>();
 
-        // Create vertex buffer
+        let vertex_count = vertices.len();
+        let index_count = indices.len();
+
+        let vertex_data_size = (vertex_count * std::mem::size_of::<Vertex>()) as u64;
+        let index_data_size = (index_count * std::mem::size_of::<u16>()) as u64;
+
+        // Create GPU buffers
         let vertex_buffer = Buffer::new(
             device.clone(),
             allocator.clone(),
             BufferCreateInfo {
-                size: (vertex_count * std::mem::size_of::<Vertex>()) as u64,
+                size: vertex_data_size,
                 usage: BufferUsage::VERTEX_BUFFER | BufferUsage::TRANSFER_DST,
             },
             MemoryLocation::GpuOnly,
         );
 
-        // Create index buffer
         let index_buffer = Buffer::new(
-            device,
-            allocator,
+            device.clone(),
+            allocator.clone(),
             BufferCreateInfo {
-                size: (index_count * std::mem::size_of::<u32>()) as u64,
+                size: index_data_size,
                 usage: BufferUsage::INDEX_BUFFER | BufferUsage::TRANSFER_DST,
             },
             MemoryLocation::GpuOnly,
         );
 
-        Self {
+        // Create staging buffers
+        let vertex_staging = Buffer::new_staging_with_data(
+            device.clone(),
+            allocator.clone(),
+            bytemuck::cast_slice(&vertices),
+        );
+
+        let index_staging = Buffer::new_staging_with_data(
+            device,
+            allocator,
+            bytemuck::cast_slice(&indices),
+        );
+
+        let mesh = Arc::new(Mesh {
             vertex_buffer,
             index_buffer,
             vertex_count,
             index_count,
-        }
+        });
+
+        let upload_task = MeshUploadTask {
+            mesh: mesh.clone(),
+            vertex_staging,
+            index_staging,
+            vertex_count,
+            index_count,
+        };
+
+        (mesh, upload_task)
+    }
+
+    #[inline]
+    pub fn vertex_count(&self) -> usize {
+        self.vertex_count
+    }
+
+    #[inline]
+    pub fn index_count(&self) -> usize {
+        self.index_count
+    }
+
+    #[inline]
+    pub fn vertex_buffer(&self) -> Arc<Buffer> {
+        self.vertex_buffer.clone()
+    }
+
+    #[inline]
+    pub fn index_buffer(&self) -> Arc<Buffer> {
+        self.index_buffer.clone()
     }
 }
 
 pub struct MeshUploadTask {
-    pub mesh: Arc<Mesh>,
+    mesh: Arc<Mesh>,
+    vertex_staging: Arc<Buffer>,
+    index_staging: Arc<Buffer>,
+    vertex_count: usize,
+    index_count: usize,
+}
+
+impl FrameNode for MeshUploadTask {
+    fn name(&self) -> Cow<'static, str> {
+        "upload_mesh".into()
+    }
+
+    fn prepare(&self, _context: &mut PrepareContext) -> Box<dyn FnMut(&mut ExecuteContext<'_>) + 'static> {
+        let vertex_buffer = self.mesh.vertex_buffer.clone();
+        let index_buffer = self.mesh.index_buffer.clone();
+        let vertex_staging = self.vertex_staging.clone();
+        let index_staging = self.index_staging.clone();
+        let vertex_size = (self.vertex_count * std::mem::size_of::<Vertex>()) as u64;
+        let index_size = (self.index_count * std::mem::size_of::<u16>()) as u64;
+
+        Box::new(move |execute_context| {
+            // Copy vertex buffer
+            execute_context.command_encoder.copy_buffer(
+                &vertex_staging,
+                &vertex_buffer,
+                0,
+                0,
+                vertex_size,
+            );
+
+            // Copy index buffer
+            execute_context.command_encoder.copy_buffer(
+                &index_staging,
+                &index_buffer,
+                0,
+                0,
+                index_size,
+            );
+        })
+    }
 }

@@ -4,11 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "bindless-demo"
-path = "src/bindless_main.rs"
-
-[[bin]]
-name = "main"
+name = "vislum-test"
 path = "src/main.rs"
 
 [dependencies]

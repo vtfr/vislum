@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ash::vk;
 
 use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, vk_enum};
-use super::{Format, Image, ImageType};
+use super::{ImageFormat, Image, ImageType};
 
 vk_enum! {
     #[derive(Default)]
@@ -30,8 +30,8 @@ impl From<ImageType> for ImageViewType {
 
 pub struct ImageViewCreateInfo {
     pub image: Arc<Image>,
-    pub view_type: vk::ImageViewType,
-    pub format: Format,
+    pub view_type: ImageViewType,
+    pub format: ImageFormat,
     pub components: vk::ComponentMapping,
     pub subresource_range: vk::ImageSubresourceRange,
 }
@@ -45,7 +45,7 @@ impl ImageView {
     pub fn new(device: Arc<Device>, create_info: ImageViewCreateInfo) -> Arc<Self> {
         let vk_create_info = vk::ImageViewCreateInfo::default()
             .image(create_info.image.vk_handle())
-            .view_type(create_info.view_type)
+            .view_type(create_info.view_type.to_vk())
             .format(create_info.format.to_vk())
             .components(create_info.components)
             .subresource_range(create_info.subresource_range);

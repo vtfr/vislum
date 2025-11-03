@@ -2,7 +2,7 @@ use crate::vk_enum;
 
 vk_enum! {
     #[derive(Default)]
-    pub enum Format: ash::vk::Format {
+    pub enum ImageFormat: ash::vk::Format {
         #[default]
         Rgba8Unorm => R8G8B8A8_UNORM,
         Rgba8Srgb => R8G8B8A8_SRGB,

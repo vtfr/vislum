@@ -69,6 +69,24 @@ impl Buffer {
         })
     }
 
+    pub fn new_staging_with_data(
+        device: Arc<Device>,
+        allocator: Arc<MemoryAllocator>,
+        data: &[u8],
+    ) -> Arc<Self> {
+        let create_info = BufferCreateInfo {
+            size: data.len() as u64,
+            usage: BufferUsage::TRANSFER_SRC,
+        };
+
+        let buffer = Self::new(device, allocator, create_info, MemoryLocation::CpuToGpu);
+
+        unsafe {
+            buffer.write(data);
+        }
+
+        buffer
+    }
     /// Writes data to a host-visible buffer.
     /// 
     /// # Safety

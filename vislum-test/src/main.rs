@@ -104,18 +104,18 @@ impl ApplicationHandler for App {
             log::info!("Vulkan library created");
             
             // Build instance extensions
-            let mut instance_ext_names = vec![ash::khr::surface::NAME];
+            let mut instance_extensions = InstanceExtensions::default();
+            instance_extensions.khr_surface = true;
             #[cfg(unix)]
             {
-                instance_ext_names.push(ash::khr::wayland_surface::NAME);
-                instance_ext_names.push(ash::khr::xlib_surface::NAME);
-                instance_ext_names.push(ash::khr::xcb_surface::NAME);
+                // instance_extensions.khr_wayland_surface = true;
+                instance_extensions.khr_xlib_surface = true;
+                instance_extensions.khr_xcb_surface = true;
             }
             #[cfg(windows)]
             {
-                instance_ext_names.push(ash::khr::win32_surface::NAME);
+                instance_extensions.khr_win32_surface = true;
             }
-            let instance_extensions = InstanceExtensions::from_iter(instance_ext_names.iter().copied());
             
             log::info!("Creating Vulkan instance...");
             let instance = Instance::new(library, instance_extensions);
@@ -364,12 +364,13 @@ impl ApplicationHandler for App {
             log::info!("Texture image obtained");
             
             // Create image view
+            use vislum_render_rhi::image::ImageViewType;
             let image_view = vislum_render_rhi::image::ImageView::new(
                 device.clone(),
                 vislum_render_rhi::image::ImageViewCreateInfo {
                     image: texture_image,
-                    view_type: vk::ImageViewType::TYPE_2D,
-                    format: vislum_render_rhi::image::Format::Rgba8Unorm,
+                    view_type: ImageViewType::D2,
+                    format: vislum_render_rhi::image::ImageFormat::Rgba8Unorm,
                     components: vk::ComponentMapping::default(),
                     subresource_range: vk::ImageSubresourceRange::default()
                         .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -500,9 +501,9 @@ impl ApplicationHandler for App {
             // Write descriptor set using ash
             {
                 // Binding 0: Sampled image
-                use vislum_render_rhi::VkHandle;
+                use vislum_render_rhi::{VkHandle, command::types::ImageLayout};
                 let image_info = vk::DescriptorImageInfo::default()
-                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image_layout(ImageLayout::ShaderReadOnlyOptimal.to_vk())
                     .image_view(image_view.vk_handle());
                 let image_infos = [image_info];
                 
@@ -629,8 +630,8 @@ impl ApplicationHandler for App {
                     .attachments(&color_blend_attachments);
 
                 // Dynamic rendering (KHR extension)
-                let image_format = swapchain.image_format();
-                let color_attachment_formats = [image_format];
+                let image_format_vk = swapchain.image_format().to_vk();
+                let color_attachment_formats = [image_format_vk];
                 let mut dynamic_rendering = vk::PipelineRenderingCreateInfo::default()
                     .color_attachment_formats(&color_attachment_formats);
 
@@ -771,26 +772,24 @@ impl ApplicationHandler for App {
                     // Get swapchain image
                     let swapchain_image = swapchain_images[img_idx as usize].clone();
 
-                    // Create image view for swapchain image (using ash directly)
+                    // Create image view for swapchain image using RHI
                     log::debug!("Creating swapchain image view...");
-                    let swapchain_image_view = {
-                        use vislum_render_rhi::VkHandle;
-                        let create_info = vk::ImageViewCreateInfo::default()
-                            .image(swapchain_image.vk_handle())
-                            .view_type(vk::ImageViewType::TYPE_2D)
-                            .format(swapchain.image_format().to_vk())
-                            .components(vk::ComponentMapping::default())
-                            .subresource_range(vk::ImageSubresourceRange::default()
+                    use vislum_render_rhi::image::{ImageView, ImageViewType, ImageViewCreateInfo};
+                    let swapchain_image_view = ImageView::new(
+                        device.clone(),
+                        ImageViewCreateInfo {
+                            image: swapchain_image.clone(),
+                            view_type: ImageViewType::D2,
+                            format: swapchain.image_format(),
+                            components: vk::ComponentMapping::default(),
+                            subresource_range: vk::ImageSubresourceRange::default()
                                 .aspect_mask(vk::ImageAspectFlags::COLOR)
                                 .base_mip_level(0)
                                 .level_count(1)
                                 .base_array_layer(0)
-                                .layer_count(1));
-
-                        unsafe {
-                            device.ash_handle().create_image_view(&create_info, None).unwrap()
-                        }
-                    };
+                                .layer_count(1),
+                        },
+                    );
                     log::debug!("Swapchain image view created");
 
                     let window_size = window.inner_size();
@@ -804,7 +803,7 @@ impl ApplicationHandler for App {
                     // Add render pass to frame graph
                     struct RenderQuadNode {
                         swapchain_image: Arc<vislum_render_rhi::image::Image>,
-                        swapchain_image_view: vk::ImageView,
+                        swapchain_image_view: Arc<vislum_render_rhi::image::ImageView>,
                         window_width: u32,
                         window_height: u32,
                         pipeline: vk::Pipeline,
@@ -821,7 +820,7 @@ impl ApplicationHandler for App {
 
                         fn prepare(&self, _context: &mut vislum_render::graph::PrepareContext) -> Box<dyn FnMut(&mut vislum_render::graph::ExecuteContext<'_>) + 'static> {
                             let swapchain_image = self.swapchain_image.clone();
-                            let swapchain_image_view = self.swapchain_image_view;
+                            let swapchain_image_view = self.swapchain_image_view.clone();
                             let window_width = self.window_width;
                             let window_height = self.window_height;
                             let pipeline = self.pipeline;
@@ -831,7 +830,7 @@ impl ApplicationHandler for App {
                             let index_buffer = self.index_buffer.clone();
 
                             Box::new(move |execute_context| {
-                            use vislum_render_rhi::command::types::{ImageLayout, AccessFlags2, PipelineStageFlags2};
+                            use vislum_render_rhi::{VkHandle, command::types::{ImageLayout, AccessFlags2, PipelineStageFlags2}};
                             // Transition swapchain image to color attachment layout
                             execute_context.command_encoder.transition_image(
                                 &swapchain_image,
@@ -853,8 +852,8 @@ impl ApplicationHandler for App {
                                 },
                             };
                             let color_attachment = vk::RenderingAttachmentInfo::default()
-                                .image_view(swapchain_image_view)
-                                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                                .image_view(swapchain_image_view.vk_handle())
+                                .image_layout(ImageLayout::ColorAttachmentOptimal.to_vk())
                                 .load_op(vk::AttachmentLoadOp::CLEAR)
                                 .store_op(vk::AttachmentStoreOp::STORE)
                                 .clear_value(clear_value);
@@ -865,6 +864,7 @@ impl ApplicationHandler for App {
                             let color_attachments = [color_attachment];
                             let rendering_info = vk::RenderingInfo::default()
                                 .color_attachments(&color_attachments)
+                                // Don't call depth_attachment() or stencil_attachment() to leave them as None
                                 .render_area(render_area)
                                 .layer_count(1);
 
@@ -957,12 +957,9 @@ impl ApplicationHandler for App {
 
                     // Present
                     log::debug!("Presenting swapchain image...");
-                    swapchain.present(&queue, img_idx, &[&render_semaphore]);
+                    swapchain.present(queue, img_idx, &[&render_semaphore]);
 
-                    // Cleanup swapchain image view
-                    unsafe {
-                        device.ash_handle().destroy_image_view(swapchain_image_view, None);
-                    }
+                    // Swapchain image view is automatically cleaned up when dropped (RHI manages it)
 
                     // Advance to next frame
                     *current_frame = (*current_frame + 1) % frame_sync_objects.len();

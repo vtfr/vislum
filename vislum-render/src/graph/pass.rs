@@ -18,8 +18,8 @@ use crate::{
 
 #[derive(Debug)]
 pub enum FramePassResource {
-    Texture(ResourceId<Texture>),
-    Mesh(ResourceId<Mesh>),
+    Texture(ResourceId<Arc<Texture>>),
+    Mesh(ResourceId<Arc<Mesh>>),
     Surface,
 }
 
@@ -41,7 +41,7 @@ impl<'a> PrepareContext<'a> {
         }
     }
 
-    pub fn read_texture(&mut self, id: ResourceId<Texture>) -> Option<Arc<Image>> {
+    pub fn read_texture(&mut self, id: ResourceId<Arc<Texture>>) -> Option<Arc<Image>> {
         self.read.push(FramePassResource::Texture(id));
         self.resource_manager.resolve_texture_image(id)
     }

@@ -2,8 +2,14 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, memory::{MemoryAllocation, MemoryAllocator, MemoryLocation}, swapchain::Swapchain, vk_enum, vk_enum_flags};
-use super::{Extent3D, Format};
+use super::{Extent3D, ImageFormat};
+use crate::{
+    AshHandle, DebugWrapper, VkHandle,
+    device::Device,
+    memory::{MemoryAllocation, MemoryAllocator, MemoryLocation},
+    swapchain::Swapchain,
+    vk_enum, vk_enum_flags,
+};
 
 vk_enum! {
     #[derive(Default)]
@@ -38,12 +44,12 @@ enum ImageStorage {
     Swapchain {
         #[allow(dead_code)]
         swapchain: Arc<Swapchain>,
-    }
+    },
 }
 
 pub struct ImageCreateInfo {
     pub dimensions: ImageType,
-    pub format: Format,
+    pub format: ImageFormat,
     pub extent: Extent3D,
     pub mip_levels: u32,
     pub array_layers: u32,
@@ -56,7 +62,7 @@ impl Default for ImageCreateInfo {
     fn default() -> Self {
         Self {
             dimensions: ImageType::D2,
-            format: Format::Rgba8Unorm,
+            format: ImageFormat::Rgba8Unorm,
             extent: Extent3D::default(),
             mip_levels: 1,
             array_layers: 1,
@@ -68,7 +74,7 @@ impl Default for ImageCreateInfo {
 pub struct Image {
     device: Arc<Device>,
     image: DebugWrapper<vk::Image>,
-    owner: ImageStorage,
+    storage: ImageStorage,
 }
 
 impl Image {
@@ -90,19 +96,18 @@ impl Image {
             .usage(create_info.usage.to_vk());
 
         let image = unsafe {
-            device.ash_handle().create_image(&vk_create_info, None).unwrap()
+            device
+                .ash_handle()
+                .create_image(&vk_create_info, None)
+                .unwrap()
         };
 
         // Get memory requirements for the image
-        let memory_requirements = unsafe {
-            device.ash_handle().get_image_memory_requirements(image)
-        };
+        let memory_requirements =
+            unsafe { device.ash_handle().get_image_memory_requirements(image) };
 
         // Allocate memory for the image
-        let memory = allocator.allocate(
-            memory_requirements,
-            memory_location,
-        );
+        let memory = allocator.allocate(memory_requirements, memory_location);
 
         // Bind memory to the image
         unsafe {
@@ -115,19 +120,18 @@ impl Image {
         Arc::new(Self {
             device,
             image: DebugWrapper(image),
-            owner: ImageStorage::User {
-                memory,
-            },
+            storage: ImageStorage::User { memory },
         })
     }
 
-    pub(crate) fn from_swapchain_image(swapchain: Arc<Swapchain>, swapchain_image: vk::Image) -> Arc<Self> {
+    pub(crate) fn from_swapchain_image(
+        swapchain: Arc<Swapchain>,
+        swapchain_image: vk::Image,
+    ) -> Arc<Self> {
         Arc::new(Self {
             device: swapchain.device().clone(),
             image: DebugWrapper(swapchain_image),
-            owner: ImageStorage::Swapchain {
-                swapchain,
-            },
+            storage: ImageStorage::Swapchain { swapchain },
         })
     }
 
@@ -148,16 +152,13 @@ impl VkHandle for Image {
 impl Drop for Image {
     fn drop(&mut self) {
         // Only destroy the image if we own it (not if it came from a swapchain)
-        match &self.owner {
-            ImageStorage::User { .. } => {
-                unsafe {
-                    self.device.ash_handle().destroy_image(self.image.0, None);
-                }
-            }
+        match &self.storage {
+            ImageStorage::User { .. } => unsafe {
+                self.device.ash_handle().destroy_image(self.image.0, None);
+            },
             ImageStorage::Swapchain { .. } => {
                 // Don't destroy swapchain images as they're managed by the swapchain
             }
         }
     }
 }
-

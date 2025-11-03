@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::vk;
 
-use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, surface::Surface, image::{Format, Extent2D, Image, ImageUsage}, vk_enum};
+use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, surface::Surface, image::{ImageFormat, Extent2D, Image, ImageUsage}, vk_enum};
 
 vk_enum! {
     #[derive(Default)]
@@ -31,7 +31,7 @@ pub struct Swapchain {
     swapchain: DebugWrapper<vk::SwapchainKHR>,
     swapchain_loader: ash::khr::swapchain::Device,
     surface: Arc<Surface>,
-    image_format: Format,
+    image_format: ImageFormat,
     image_extent: Extent2D,
 }
 
@@ -61,8 +61,8 @@ impl Swapchain {
             .copied()
             .unwrap_or_else(|| formats[0]);
         
-        let image_format = Format::from_vk(surface_format.format)
-            .unwrap_or(Format::Rgba8Unorm);
+        let image_format = ImageFormat::from_vk(surface_format.format)
+            .unwrap_or(ImageFormat::Rgba8Unorm);
 
         // Choose image count
         let mut image_count = create_info
@@ -218,7 +218,7 @@ impl Swapchain {
 
 
     /// Gets the image format.
-    pub fn image_format(&self) -> Format {
+    pub fn image_format(&self) -> ImageFormat {
         self.image_format
     }
 
