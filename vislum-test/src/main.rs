@@ -1,46 +1,46 @@
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::Result;
-use ash::vk;
-use image::GenericImageView;
+use ash::vk::{self, AccessFlags2, ImageLayout};
 use winit::{
-    application::ApplicationHandler, event::{Event, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, raw_window_handle::HasDisplayHandle, window::{Window, WindowId}
+    application::ApplicationHandler,
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, EventLoop},
+    raw_window_handle::HasDisplayHandle,
+    window::{Window, WindowId},
 };
 
 use vislum_render::context::RenderContext;
 use vislum_render::graph::pass::FrameGraphSubmitInfo;
-use vislum_render::resource::{pool::ResourceId, texture::{Texture, TextureDimensions, TextureFormat, TextureCreateInfo}};
+use vislum_render::resource::{
+    mesh::Vertex,
+    pool::ResourceId,
+    texture::{Texture, TextureCreateInfo, TextureDimensions, TextureFormat},
+};
 use vislum_render_rhi::{
+    command::CommandPool,
+    device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures},
     instance::{Instance, InstanceExtensions, Library},
-    device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures, PhysicalDevice},
+    memory::MemoryAllocator,
     queue::Queue,
     surface::Surface,
     swapchain::{Swapchain, SwapchainCreateInfo},
-    memory::{MemoryAllocator, MemoryLocation},
     sync::{Fence, Semaphore},
-    command::{CommandPool, AutoCommandBuffer},
 };
-use vislum_shader::compiler::{ShaderCompiler, ShaderType};
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct QuadVertex {
-    position: [f32; 3],
-    uv: [f32; 2],
-}
+use vislum_shader::compiler::ShaderCompiler;
 
 #[derive(Default)]
 enum AppState {
     #[default]
     Uninitialized,
-        Ready {
-            window: Arc<Window>,
-            render_context: RenderContext,
-            surface: Arc<Surface>,
-            swapchain: Arc<Swapchain>,
-            swapchain_images: Vec<Arc<vislum_render_rhi::image::Image>>,
-            texture_id: ResourceId<Texture>,
+    Ready {
+        window: Arc<Window>,
+        render_context: RenderContext,
+        surface: Arc<Surface>,
+        swapchain: Arc<Swapchain>,
+        swapchain_images: Vec<Arc<vislum_render_rhi::image::Image>>,
+        texture_id: ResourceId<Texture>,
         // Direct ash handles for things not yet in RHI
         device: Arc<vislum_render_rhi::device::Device>,
         queue: Arc<Queue>,
@@ -52,13 +52,14 @@ enum AppState {
         descriptor_pool: vk::DescriptorPool,
         sampler: Arc<vislum_render_rhi::sampler::Sampler>,
         image_view: Arc<vislum_render_rhi::image::ImageView>,
-        // Vertex/index buffers (using RHI buffers)
-        vertex_buffer: Arc<vislum_render_rhi::buffer::Buffer>,
-        index_buffer: Arc<vislum_render_rhi::buffer::Buffer>,
+        // Mesh (using vislum-render abstraction)
+        mesh_id: ResourceId<vislum_render::resource::mesh::Mesh>,
         // Command pool for frame rendering
         command_pool: Arc<CommandPool>,
-        // Per-frame sync objects (one set per swapchain image)
+        // Per-swapchain-image sync objects (one set per swapchain image)
         frame_sync_objects: Vec<(Arc<Semaphore>, Arc<Semaphore>, Arc<Fence>)>, // (acquire, render, fence)
+        // Track which swapchain images have been used (to know initial layout)
+        swapchain_images_used: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u32>>>,
         current_frame: usize,
         image_index: Option<u32>,
     },
@@ -88,18 +89,16 @@ impl ApplicationHandler for App {
                 .with_resizable(true)
                 .with_visible(true)
                 .with_active(true);
-            
+
             log::info!("Creating window...");
-            let window = Arc::new(
-                event_loop.create_window(window_attributes).unwrap()
-            );
+            let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
             log::info!("Window created");
 
             // Initialize RHI
             log::info!("Creating Vulkan library...");
             let library = Library::new();
             log::info!("Vulkan library created");
-            
+
             // Build instance extensions
             let mut instance_extensions = InstanceExtensions::default();
             match window.display_handle().unwrap().as_raw() {
@@ -112,10 +111,10 @@ impl ApplicationHandler for App {
                 winit::raw_window_handle::RawDisplayHandle::Wayland(_) => {
                     instance_extensions.khr_wayland_surface = true;
                 }
-                _ => unimplemented!()
+                _ => unimplemented!(),
             }
             instance_extensions.khr_surface = true;
-            
+
             log::info!("Creating Vulkan instance...");
             let instance = Instance::new(library, instance_extensions);
             log::info!("Vulkan instance created");
@@ -134,24 +133,26 @@ impl ApplicationHandler for App {
                     // Check if swapchain extension is supported
                     let extensions = p.extensions();
                     let swapchain_ext_name = ash::khr::swapchain::NAME;
-                    if !extensions.iter_c_strs().any(|name| name == swapchain_ext_name) {
+                    if !extensions
+                        .iter_c_strs()
+                        .any(|name| name == swapchain_ext_name)
+                    {
                         return None;
                     }
-                    
+
                     // Check if any queue family supports graphics and presentation
-                    let queue_family_index = p
-                        .capabilities()
-                            .enumerate()
-                            .find_map(|(idx, q)| {
-                            if q.queue_flags.contains(vislum_render_rhi::device::QueueFlags::GRAPHICS)
+                    let queue_family_index =
+                        p.capabilities().enumerate().find_map(|(idx, q)| {
+                            if q.queue_flags
+                                .contains(vislum_render_rhi::device::QueueFlags::GRAPHICS)
                                 && surface.get_physical_device_surface_support(p, idx as u32)
                             {
-                                    Some(idx)
-                                } else {
-                                    None
-                                }
-                            })?;
-                    
+                                Some(idx)
+                            } else {
+                                None
+                            }
+                        })?;
+
                     Some((p.clone(), queue_family_index as u32))
                 })
                 .min_by_key(|(p, _)| match p.properties().device_type {
@@ -166,17 +167,14 @@ impl ApplicationHandler for App {
 
             // Create device
             log::info!("Creating device...");
-            let device_ext_names = [
-                ash::khr::swapchain::NAME,
-                ash::khr::dynamic_rendering::NAME,
-            ];
+            let device_ext_names = [ash::khr::swapchain::NAME, ash::khr::dynamic_rendering::NAME];
             let device_extensions = DeviceExtensions::from_iter(device_ext_names.iter().copied());
-            
+
             // Enable dynamic rendering and synchronization2 features
             let mut device_features = DeviceFeatures::default();
             device_features.dynamic_rendering = true;
             device_features.synchronization2 = true;
-            
+
             let device = Device::new(
                 instance.clone(),
                 DeviceCreateInfo {
@@ -191,15 +189,14 @@ impl ApplicationHandler for App {
             // Get queue (device creates queue family 0, so get queue 0)
             log::info!("Getting queue...");
             use vislum_render_rhi::AshHandle;
-            let queue_handle = unsafe {
-                device.ash_handle().get_device_queue(queue_family_index, 0)
-            };
+            let queue_handle =
+                unsafe { device.ash_handle().get_device_queue(queue_family_index, 0) };
             let queue = Arc::new(Queue::new(device.clone(), queue_handle));
             log::info!("Queue obtained");
 
             // Create memory allocator
             log::info!("Creating memory allocator...");
-            let allocator = MemoryAllocator::new(device.clone());
+            let _allocator = MemoryAllocator::new(device.clone());
             log::info!("Memory allocator created");
 
             // Create swapchain
@@ -218,16 +215,14 @@ impl ApplicationHandler for App {
 
             // Create RenderContext
             log::info!("Creating render context...");
-            let mut render_context = RenderContext::new(
-                device.clone(),
-                queue.clone(),
-            );
+            let mut render_context = RenderContext::new(device.clone(), queue.clone());
             log::info!("Render context created");
 
             // Load PNG image
             log::info!("Loading texture image...");
             // Try paths relative to workspace root and package directory
-            let image_path = PathBuf::from("vislum-test/Rust_programming_language_black_logo.svg.png");
+            let image_path =
+                PathBuf::from("vislum-test/Rust_programming_language_black_logo.svg.png");
             let img = image::open(&image_path)
                 .or_else(|_| image::open("Rust_programming_language_black_logo.svg.png"))
                 .expect("Failed to load image: Rust_programming_language_black_logo.svg.png");
@@ -243,98 +238,49 @@ impl ApplicationHandler for App {
                 TextureCreateInfo {
                     format: TextureFormat::Rgba8Unorm,
                     dimensions: TextureDimensions::D2,
-                    extent: vislum_render_rhi::image::Extent3D { width, height, depth: 1 },
+                    extent: vislum_render_rhi::image::Extent3D {
+                        width,
+                        height,
+                        depth: 1,
+                    },
                 },
                 image_data,
             );
             log::info!("Texture created with id: {:?}", texture_id);
 
-            // Create quad vertex and index buffers using RHI
-            log::info!("Creating vertex and index buffers...");
+            // Create quad mesh using vislum-render
+            log::info!("Creating quad mesh...");
             let vertices = vec![
-                QuadVertex { position: [-0.5, -0.5, 0.0], uv: [0.0, 1.0] },
-                QuadVertex { position: [0.5, -0.5, 0.0], uv: [1.0, 1.0] },
-                QuadVertex { position: [0.5, 0.5, 0.0], uv: [1.0, 0.0] },
-                QuadVertex { position: [-0.5, 0.5, 0.0], uv: [0.0, 0.0] },
+                Vertex {
+                    position: [-0.5, -0.5, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 1.0],
+                },
+                Vertex {
+                    position: [0.5, -0.5, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 1.0],
+                },
+                Vertex {
+                    position: [0.5, 0.5, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [1.0, 0.0],
+                },
+                Vertex {
+                    position: [-0.5, 0.5, 0.0],
+                    normal: [0.0, 0.0, 1.0],
+                    uv: [0.0, 0.0],
+                },
             ];
 
-            let indices = vec![0u32, 1, 2, 2, 3, 0];
+            let indices = vec![0u16, 1, 2, 2, 3, 0];
+            let mesh_id = render_context.create_mesh(vertices, indices);
+            log::info!("Quad mesh created with id: {:?}", mesh_id);
 
-            // Create staging buffers with host-visible memory for upload
-            log::info!("Uploading vertex/index data to GPU...");
-            let vertex_data_size = (vertices.len() * std::mem::size_of::<QuadVertex>()) as u64;
-            let index_data_size = (indices.len() * std::mem::size_of::<u32>()) as u64;
-            
-            // Create staging buffers using RHI
-            let vertex_staging_buffer = vislum_render_rhi::buffer::Buffer::new(
-                device.clone(),
-                allocator.clone(),
-                vislum_render_rhi::buffer::BufferCreateInfo {
-                    size: vertex_data_size,
-                    usage: vislum_render_rhi::buffer::BufferUsage::TRANSFER_SRC,
-                },
-                MemoryLocation::CpuToGpu,
-            );
-            
-            let index_staging_buffer = vislum_render_rhi::buffer::Buffer::new(
-                device.clone(),
-                allocator.clone(),
-                vislum_render_rhi::buffer::BufferCreateInfo {
-                    size: index_data_size,
-                    usage: vislum_render_rhi::buffer::BufferUsage::TRANSFER_SRC,
-                },
-                MemoryLocation::CpuToGpu,
-            );
-            
-            // Write data to staging buffers
-            unsafe {
-                vertex_staging_buffer.write(bytemuck::cast_slice(&vertices));
-                index_staging_buffer.write(bytemuck::cast_slice(&indices));
-            }
-            
-            // Create GPU buffers
-            let vertex_buffer = vislum_render_rhi::buffer::Buffer::new(
-                device.clone(),
-                allocator.clone(),
-                vislum_render_rhi::buffer::BufferCreateInfo {
-                    size: vertex_data_size,
-                    usage: vislum_render_rhi::buffer::BufferUsage::VERTEX_BUFFER | vislum_render_rhi::buffer::BufferUsage::TRANSFER_DST,
-                },
-                MemoryLocation::GpuOnly,
-            );
-
-            let index_buffer = vislum_render_rhi::buffer::Buffer::new(
-                device.clone(),
-                allocator.clone(),
-                vislum_render_rhi::buffer::BufferCreateInfo {
-                    size: index_data_size,
-                    usage: vislum_render_rhi::buffer::BufferUsage::INDEX_BUFFER | vislum_render_rhi::buffer::BufferUsage::TRANSFER_DST,
-                },
-                MemoryLocation::GpuOnly,
-            );
-            
-            // Get texture image for creating image view and descriptor set
-            log::info!("Getting texture image...");
-            let texture_image = render_context.get_texture_image(texture_id).unwrap();
-            log::info!("Texture image obtained");
-            
-            // Create image view
-            use vislum_render_rhi::image::ImageViewType;
-            let image_view = vislum_render_rhi::image::ImageView::new(
-                device.clone(),
-                vislum_render_rhi::image::ImageViewCreateInfo {
-                    image: texture_image,
-                    view_type: ImageViewType::D2,
-                    format: vislum_render_rhi::image::ImageFormat::Rgba8Unorm,
-                    components: vk::ComponentMapping::default(),
-                    subresource_range: vk::ImageSubresourceRange::default()
-                        .aspect_mask(vk::ImageAspectFlags::COLOR)
-                        .base_mip_level(0)
-                        .level_count(1)
-                        .base_array_layer(0)
-                        .layer_count(1),
-                },
-            );
+            // Get texture view for descriptor set
+            log::info!("Getting texture view...");
+            let image_view = render_context.get_texture_view(texture_id).unwrap();
+            log::info!("Texture view obtained");
 
             // Create sampler
             let sampler = vislum_render_rhi::sampler::Sampler::new(
@@ -352,7 +298,7 @@ impl ApplicationHandler for App {
             // Compile shaders
             log::info!("Compiling shaders...");
             let compiler = ShaderCompiler::new().expect("Failed to create shader compiler");
-            
+
             // Try paths relative to workspace root and package directory
             let vert_source = std::fs::read_to_string("vislum-test/shaders/quad.vert.hlsl")
                 .or_else(|_| std::fs::read_to_string("shaders/quad.vert.hlsl"))
@@ -372,26 +318,32 @@ impl ApplicationHandler for App {
             // Create shader modules using ash directly
             log::info!("Creating shader modules...");
             // Convert byte slice to u32 slice for shader code
-            let vert_spirv_u32: Vec<u32> = vert_spirv.chunks_exact(4)
+            let vert_spirv_u32: Vec<u32> = vert_spirv
+                .chunks_exact(4)
                 .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
                 .collect();
-            let frag_spirv_u32: Vec<u32> = frag_spirv.chunks_exact(4)
+            let frag_spirv_u32: Vec<u32> = frag_spirv
+                .chunks_exact(4)
                 .map(|chunk| u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
                 .collect();
 
             let vert_shader_module = {
-                let create_info = vk::ShaderModuleCreateInfo::default()
-                    .code(&vert_spirv_u32);
+                let create_info = vk::ShaderModuleCreateInfo::default().code(&vert_spirv_u32);
                 unsafe {
-                    device.ash_handle().create_shader_module(&create_info, None).unwrap()
+                    device
+                        .ash_handle()
+                        .create_shader_module(&create_info, None)
+                        .unwrap()
                 }
             };
 
             let frag_shader_module = {
-                let create_info = vk::ShaderModuleCreateInfo::default()
-                    .code(&frag_spirv_u32);
+                let create_info = vk::ShaderModuleCreateInfo::default().code(&frag_spirv_u32);
                 unsafe {
-                    device.ash_handle().create_shader_module(&create_info, None).unwrap()
+                    device
+                        .ash_handle()
+                        .create_shader_module(&create_info, None)
+                        .unwrap()
                 }
             };
             log::info!("Shader modules created");
@@ -412,11 +364,13 @@ impl ApplicationHandler for App {
                         .stage_flags(vk::ShaderStageFlags::FRAGMENT),
                 ];
 
-                let create_info = vk::DescriptorSetLayoutCreateInfo::default()
-                    .bindings(&bindings);
+                let create_info = vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
 
                 unsafe {
-                    device.ash_handle().create_descriptor_set_layout(&create_info, None).unwrap()
+                    device
+                        .ash_handle()
+                        .create_descriptor_set_layout(&create_info, None)
+                        .unwrap()
                 }
             };
 
@@ -436,7 +390,10 @@ impl ApplicationHandler for App {
                     .max_sets(1);
 
                 unsafe {
-                    device.ash_handle().create_descriptor_pool(&create_info, None).unwrap()
+                    device
+                        .ash_handle()
+                        .create_descriptor_pool(&create_info, None)
+                        .unwrap()
                 }
             };
 
@@ -448,7 +405,10 @@ impl ApplicationHandler for App {
                     .set_layouts(&layouts);
 
                 let sets = unsafe {
-                    device.ash_handle().allocate_descriptor_sets(&allocate_info).unwrap()
+                    device
+                        .ash_handle()
+                        .allocate_descriptor_sets(&allocate_info)
+                        .unwrap()
                 };
                 sets[0]
             };
@@ -461,12 +421,11 @@ impl ApplicationHandler for App {
                     .image_layout(ImageLayout::ShaderReadOnlyOptimal.to_vk())
                     .image_view(image_view.vk_handle());
                 let image_infos = [image_info];
-                
+
                 // Binding 1: Sampler
-                let sampler_info = vk::DescriptorImageInfo::default()
-                    .sampler(sampler.vk_handle());
+                let sampler_info = vk::DescriptorImageInfo::default().sampler(sampler.vk_handle());
                 let sampler_infos = [sampler_info];
-                
+
                 let writes = [
                     vk::WriteDescriptorSet::default()
                         .dst_set(descriptor_set)
@@ -490,11 +449,13 @@ impl ApplicationHandler for App {
             // Create pipeline layout using ash
             let pipeline_layout = {
                 let layouts = [descriptor_set_layout];
-                let create_info = vk::PipelineLayoutCreateInfo::default()
-                    .set_layouts(&layouts);
+                let create_info = vk::PipelineLayoutCreateInfo::default().set_layouts(&layouts);
 
                 unsafe {
-                    device.ash_handle().create_pipeline_layout(&create_info, None).unwrap()
+                    device
+                        .ash_handle()
+                        .create_pipeline_layout(&create_info, None)
+                        .unwrap()
                 }
             };
 
@@ -517,7 +478,7 @@ impl ApplicationHandler for App {
                 // Vertex input
                 let binding_description = vk::VertexInputBindingDescription::default()
                     .binding(0)
-                    .stride(std::mem::size_of::<QuadVertex>() as u32)
+                    .stride(std::mem::size_of::<Vertex>() as u32)
                     .input_rate(vk::VertexInputRate::VERTEX);
 
                 let attribute_descriptions = [
@@ -529,8 +490,13 @@ impl ApplicationHandler for App {
                     vk::VertexInputAttributeDescription::default()
                         .binding(0)
                         .location(1)
-                        .format(vk::Format::R32G32_SFLOAT)
+                        .format(vk::Format::R32G32B32_SFLOAT)
                         .offset(12),
+                    vk::VertexInputAttributeDescription::default()
+                        .binding(0)
+                        .location(2)
+                        .format(vk::Format::R32G32_SFLOAT)
+                        .offset(24),
                 ];
 
                 let binding_descriptions = [binding_description];
@@ -549,8 +515,7 @@ impl ApplicationHandler for App {
                     .max_depth(1.0);
 
                 use vislum_render_rhi::image::Extent2D;
-                let scissor = vk::Rect2D::default()
-                    .extent(Extent2D::new(800, 600).to_vk());
+                let scissor = vk::Rect2D::default().extent(Extent2D::new(800, 600).to_vk());
 
                 let viewports = [viewport];
                 let scissors = [scissor];
@@ -573,9 +538,9 @@ impl ApplicationHandler for App {
                 let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
                     .color_write_mask(
                         vk::ColorComponentFlags::R
-                        | vk::ColorComponentFlags::G
-                        | vk::ColorComponentFlags::B
-                        | vk::ColorComponentFlags::A
+                            | vk::ColorComponentFlags::G
+                            | vk::ColorComponentFlags::B
+                            | vk::ColorComponentFlags::A,
                     )
                     .blend_enable(false);
 
@@ -602,11 +567,10 @@ impl ApplicationHandler for App {
                     .push_next(&mut dynamic_rendering);
 
                 let pipelines = unsafe {
-                    device.ash_handle().create_graphics_pipelines(
-                        vk::PipelineCache::null(),
-                        &[create_info],
-                None,
-                    ).unwrap()
+                    device
+                        .ash_handle()
+                        .create_graphics_pipelines(vk::PipelineCache::null(), &[create_info], None)
+                        .unwrap()
                 };
                 pipelines[0]
             };
@@ -619,12 +583,16 @@ impl ApplicationHandler for App {
             // Create per-frame sync objects (one set per swapchain image)
             log::info!("Creating per-frame sync objects...");
             let num_frames = swapchain_images.len();
-            log::info!("Creating {} sync object sets for {} swapchain images", num_frames, num_frames);
+            log::info!(
+                "Creating {} sync object sets for {} swapchain images",
+                num_frames,
+                num_frames
+            );
             let mut frame_sync_objects = Vec::with_capacity(num_frames);
             for _ in 0..num_frames {
                 frame_sync_objects.push((
-                    Semaphore::new(device.clone()), // acquire semaphore
-                    Semaphore::new(device.clone()), // render semaphore
+                    Semaphore::new(device.clone()),  // acquire semaphore
+                    Semaphore::new(device.clone()),  // render semaphore
                     Fence::signaled(device.clone()), // fence (starts signaled)
                 ));
             }
@@ -645,10 +613,10 @@ impl ApplicationHandler for App {
                 descriptor_pool,
                 sampler,
                 image_view,
-                vertex_buffer,
-                index_buffer,
+                mesh_id,
                 command_pool,
                 frame_sync_objects,
+                swapchain_images_used: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
                 current_frame: 0,
                 image_index: None,
             };
@@ -657,17 +625,20 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        log::info!("about_to_wait() called");
         // Request redraw when about to wait (before first frame)
         if let AppState::Ready { window, .. } = &self.state {
-            log::info!("About to wait, requesting initial redraw");
             window.request_redraw();
         } else {
             log::warn!("about_to_wait() called but state is not Ready");
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        _window_id: WindowId,
+        event: WindowEvent,
+    ) {
         match event {
             WindowEvent::CloseRequested => {
                 log::info!("Window close requested");
@@ -675,8 +646,8 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 log::debug!("RedrawRequested event received");
-                if let AppState::Ready { 
-                    render_context, 
+                if let AppState::Ready {
+                    render_context,
                     swapchain,
                     swapchain_images,
                     device,
@@ -684,37 +655,33 @@ impl ApplicationHandler for App {
                     pipeline,
                     pipeline_layout,
                     descriptor_set,
-                    vertex_buffer,
-                    index_buffer,
+                    mesh_id,
                     window,
-                    command_pool,
+                    command_pool: _command_pool,
                     frame_sync_objects,
+                    swapchain_images_used,
                     current_frame,
                     image_index,
+                    texture_id,
                     ..
-                } = &mut self.state {
+                } = &mut self.state
+                {
                     log::debug!("Processing frame {}", *current_frame);
-                    // Get sync objects for current frame
-                    let (acquire_semaphore, render_semaphore, render_fence) = &frame_sync_objects[*current_frame];
                     
+                    // Get sync objects for current frame
+                    let (acquire_semaphore, render_semaphore, render_fence) =
+                        &frame_sync_objects[*current_frame];
+
                     // Wait for fence from previous use of this frame
-                    // On first use, fence starts signaled, so we wait and reset
                     log::debug!("Waiting for fence (status: {})...", render_fence.status());
-                    let waited = render_fence.wait(u64::MAX);
-                    log::debug!("Fence wait returned: {}", waited);
-                    if waited {
-                        log::debug!("Resetting fence...");
-                        render_fence.reset();
-                        log::debug!("Fence reset complete");
-                    }
+                    render_fence.wait(u64::MAX);
+                    render_fence.reset();
+                    log::debug!("Fence reset complete");
 
                     // Acquire next swapchain image
                     log::debug!("Acquiring swapchain image...");
-                    let (img_idx, suboptimal) = swapchain.acquire_next_image(
-                        u64::MAX,
-                        Some(&acquire_semaphore),
-                        None,
-                    );
+                    let (img_idx, suboptimal) =
+                        swapchain.acquire_next_image(u64::MAX, Some(&acquire_semaphore), None);
 
                     *image_index = Some(img_idx);
                     log::debug!("Acquired swapchain image {}", img_idx);
@@ -726,10 +693,16 @@ impl ApplicationHandler for App {
 
                     // Get swapchain image
                     let swapchain_image = swapchain_images[img_idx as usize].clone();
+                    
+                    // Check if this image has been used before (to determine initial layout)
+                    let is_first_use = {
+                        let mut used = swapchain_images_used.lock().unwrap();
+                        used.insert(img_idx)
+                    };
 
                     // Create image view for swapchain image using RHI
                     log::debug!("Creating swapchain image view...");
-                    use vislum_render_rhi::image::{ImageView, ImageViewType, ImageViewCreateInfo};
+                    use vislum_render_rhi::image::{ImageView, ImageViewCreateInfo, ImageViewType};
                     let swapchain_image_view = ImageView::new(
                         device.clone(),
                         ImageViewCreateInfo {
@@ -764,8 +737,11 @@ impl ApplicationHandler for App {
                         pipeline: vk::Pipeline,
                         pipeline_layout: vk::PipelineLayout,
                         descriptor_set: vk::DescriptorSet,
-                        vertex_buffer: Arc<vislum_render_rhi::buffer::Buffer>,
-                        index_buffer: Arc<vislum_render_rhi::buffer::Buffer>,
+                        mesh_id: vislum_render::resource::pool::ResourceId<
+                            vislum_render::resource::mesh::Mesh,
+                        >,
+                        texture_id: vislum_render::resource::pool::ResourceId<vislum_render::resource::texture::Texture>,
+                        is_first_use: bool,
                     }
 
                     impl vislum_render::graph::FrameNode for RenderQuadNode {
@@ -773,7 +749,11 @@ impl ApplicationHandler for App {
                             "render_quad".into()
                         }
 
-                        fn prepare(&self, _context: &mut vislum_render::graph::PrepareContext) -> Box<dyn FnMut(&mut vislum_render::graph::ExecuteContext) + 'static> {
+                        fn prepare(
+                            &self,
+                            context: &mut vislum_render::graph::PrepareContext,
+                        ) -> Box<dyn FnMut(&mut vislum_render::graph::ExecuteContext) + 'static>
+                        {
                             let swapchain_image = self.swapchain_image.clone();
                             let swapchain_image_view = self.swapchain_image_view.clone();
                             let window_width = self.window_width;
@@ -781,106 +761,118 @@ impl ApplicationHandler for App {
                             let pipeline = self.pipeline;
                             let pipeline_layout = self.pipeline_layout;
                             let descriptor_set = self.descriptor_set;
-                            let vertex_buffer = self.vertex_buffer.clone();
-                            let index_buffer = self.index_buffer.clone();
+
+                            // Read mesh from ResourceManager
+                            let mesh = context.read_mesh(self.mesh_id).unwrap();
+                            let vertex_buffer = mesh.vertex_buffer();
+                            let index_buffer = mesh.index_buffer();
+                            
+                            // Read texture to ensure it's ready - clone the Arc for the closure
+                            let texture_image = context.read_texture(self.texture_id).map(|img| img.clone());
+                            let is_first_use = self.is_first_use;
 
                             Box::new(move |execute_context| {
-                            use vislum_render_rhi::{VkHandle, command::types::{ImageLayout, AccessFlags2, PipelineStageFlags2}};
-                            // Transition swapchain image to color attachment layout
-                            execute_context.command_buffer.transition_image(
-                                &swapchain_image,
-                                ImageLayout::Undefined,
-                                ImageLayout::ColorAttachmentOptimal,
-                                AccessFlags2::NONE,
-                                AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                                PipelineStageFlags2::TOP_OF_PIPE,
-                                PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-                            );
+                                let cmd = &mut execute_context.command_buffer;
 
-                            // Use AutoCommandBuffer for rendering commands
-                            let auto_cmd_buf = &mut execute_context.command_buffer;
+                                // Transition swapchain image to the color attachment layout
+                                cmd.pipeline_barrier(
+                                    std::iter::empty(),
+                                    std::iter::empty(),
+                                    std::iter::once(ImageMemoryBarrier2 {
+                                        image: swapchain_image.clone(),
+                                        src_stage_mask: PipelineStageFlags2::TOP_OF_PIPE,
+                                        src_access_mask: AccessFlags2::NONE,
+                                        dst_stage_mask: PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+                                        dst_access_mask: AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                                        old_layout: ImageLayout::Undefined,
+                                        new_layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                                    }),
+                                );
 
-                            // Begin dynamic rendering
-                            let clear_value = vk::ClearValue {
-                                color: vk::ClearColorValue {
-                                    float32: [0.0, 0.0, 0.0, 1.0],
-                                },
-                            };
-                            let color_attachment = vk::RenderingAttachmentInfo::default()
-                                .image_view(swapchain_image_view.vk_handle())
-                                .image_layout(ImageLayout::ColorAttachmentOptimal.to_vk())
-                                .load_op(vk::AttachmentLoadOp::CLEAR)
-                                .store_op(vk::AttachmentStoreOp::STORE)
-                                .clear_value(clear_value);
+                                // Begin dynamic rendering
+                                let clear_value = vk::ClearValue {
+                                    color: vk::ClearColorValue {
+                                        float32: [0.0, 0.0, 0.0, 1.0],
+                                    },
+                                };
+                                let color_attachment = vk::RenderingAttachmentInfo::default()
+                                    .image_view(swapchain_image_view.vk_handle())
+                                    .image_layout(ImageLayout::ColorAttachmentOptimal.to_vk())
+                                    .load_op(vk::AttachmentLoadOp::CLEAR)
+                                    .store_op(vk::AttachmentStoreOp::STORE)
+                                    .clear_value(clear_value);
 
-                            use vislum_render_rhi::image::Extent2D;
-                            let render_area = vk::Rect2D::default()
-                                .extent(Extent2D::new(window_width, window_height).to_vk());
-                            let color_attachments = [color_attachment];
-                            let rendering_info = vk::RenderingInfo::default()
-                                .color_attachments(&color_attachments)
-                                // Don't call depth_attachment() or stencil_attachment() to leave them as None
-                                .render_area(render_area)
-                                .layer_count(1);
+                                let render_area = vk::Rect2D::default()
+                                    .extent(Extent2D::new(window_width, window_height).to_vk());
+                                let color_attachments = [color_attachment];
+                                let rendering_info = vk::RenderingInfo::default()
+                                    .color_attachments(&color_attachments)
+                                    // Don't call depth_attachment() or stencil_attachment() to leave them as None
+                                    .render_area(render_area)
+                                    .layer_count(1);
 
-                            auto_cmd_buf.begin_rendering(&rendering_info);
-                            
-                            use vislum_render_rhi::command::types::{Viewport, Rect2D, PipelineBindPoint, IndexType};
-                            // Set viewport
-                            let viewport = Viewport::new(0.0, 0.0, window_width as f32, window_height as f32);
-                            auto_cmd_buf.set_viewport(0, &[viewport]);
+                                cmd.begin_rendering(&rendering_info);
 
-                            // Set scissor
-                            let scissor = Rect2D::new([0, 0], Extent2D::new(window_width, window_height));
-                            auto_cmd_buf.set_scissor(0, &[scissor]);
-                            
-                            // Bind pipeline
-                            auto_cmd_buf.bind_pipeline(
-                                PipelineBindPoint::Graphics,
-                                pipeline,
-                            );
-                            
-                            // Bind descriptor set
-                            let descriptor_sets = [descriptor_set];
-                            auto_cmd_buf.bind_descriptor_sets(
-                                PipelineBindPoint::Graphics,
-                                pipeline_layout,
-                                0,
-                                &descriptor_sets,
-                                &[],
-                            );
-                            
-                            // Bind vertex buffer
-                            let vertex_offsets = [0u64];
-                            auto_cmd_buf.bind_vertex_buffers_buffers(
-                                0,
-                                &[&vertex_buffer],
-                                &vertex_offsets,
-                            );
-                        
-                            // Bind index buffer
-                            auto_cmd_buf.bind_index_buffer_buffer(
-                                &index_buffer,
-                                0,
-                                IndexType::Uint32,
-                            );
-                            
-                            // Draw
-                            auto_cmd_buf.draw_indexed(6, 1, 0, 0, 0);
-                            
-                            // End rendering
-                            auto_cmd_buf.end_rendering();
+                                let viewport = Viewport::new(
+                                    0.0,
+                                    0.0,
+                                    window_width as f32,
+                                    window_height as f32,
+                                );
+                                cmd.set_viewport(0, &[viewport]);
 
-                            // Transition swapchain image to present layout
-                            execute_context.command_buffer.transition_image(
-                                &swapchain_image,
-                                ImageLayout::ColorAttachmentOptimal,
-                                ImageLayout::PresentSrcKhr,
-                                AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                                AccessFlags2::NONE,
-                                PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-                                PipelineStageFlags2::BOTTOM_OF_PIPE,
-                            );
+                                let scissor =
+                                    Rect2D::new([0, 0], Extent2D::new(window_width, window_height));
+                                cmd.set_scissor(0, &[scissor]);
+
+                                // Bind pipeline
+                                cmd.bind_pipeline(PipelineBindPoint::Graphics, pipeline);
+
+                                // Bind descriptor set
+                                let descriptor_sets = [descriptor_set];
+                                cmd.bind_descriptor_sets(
+                                    PipelineBindPoint::Graphics,
+                                    pipeline_layout,
+                                    0,
+                                    &descriptor_sets,
+                                    &[],
+                                );
+
+                                // Bind vertex buffer
+                                let vertex_offsets = [0u64];
+                                cmd.bind_vertex_buffers_buffers(
+                                    0,
+                                    &[&vertex_buffer],
+                                    &vertex_offsets,
+                                );
+
+                                // Bind index buffer
+                                cmd.bind_index_buffer_buffer(
+                                    &index_buffer,
+                                    0,
+                                    IndexType::Uint16,
+                                );
+
+                                // Draw
+                                cmd.draw_indexed(6, 1, 0, 0, 0);
+
+                                // End rendering
+                                cmd.end_rendering();
+
+                                // Transition swapchain image to present layout
+                                cmd.pipeline_barrier(
+                                    std::iter::empty(),
+                                    std::iter::empty(),
+                                    std::iter::once(ImageMemoryBarrier2 {
+                                        image: swapchain_image.clone(),
+                                        src_stage_mask: PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+                                        src_access_mask: AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                                        dst_stage_mask: PipelineStageFlags2::BOTTOM_OF_PIPE_KHR,
+                                        dst_access_mask: AccessFlags2::NONE,
+                                        old_layout: ImageLayout::ColorAttachmentOptimal,
+                                        new_layout: ImageLayout::PresentSrcKhr,
+                                    }),
+                                );
                             })
                         }
                     }
@@ -890,15 +882,16 @@ impl ApplicationHandler for App {
                     let descriptor_set_copy = *descriptor_set;
 
                     render_context.add_pass(RenderQuadNode {
-                        swapchain_image,
+                        swapchain_image: swapchain_image.clone(),
                         swapchain_image_view,
                         window_width,
                         window_height,
                         pipeline: pipeline_copy,
                         pipeline_layout: pipeline_layout_copy,
                         descriptor_set: descriptor_set_copy,
-                        vertex_buffer: vertex_buffer.clone(),
-                        index_buffer: index_buffer.clone(),
+                        mesh_id: *mesh_id,
+                        texture_id: *texture_id,
+                        is_first_use,
                     });
 
                     // Execute render pass
@@ -916,7 +909,7 @@ impl ApplicationHandler for App {
 
                     // Swapchain image view is automatically cleaned up when dropped (RHI manages it)
 
-                    // Advance to next frame
+                    // Advance to next frame index (for tracking purposes, but we use image index for semaphores)
                     *current_frame = (*current_frame + 1) % frame_sync_objects.len();
                     log::debug!("Frame complete, advanced to frame {}", *current_frame);
 

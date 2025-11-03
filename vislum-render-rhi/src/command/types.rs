@@ -1,4 +1,6 @@
-use crate::{vk_enum, vk_enum_flags, image::Extent2D};
+use std::sync::Arc;
+
+use crate::{VkHandle, buffer::Buffer, image::{Extent2D, Extent3D, Image}, vk_enum, vk_enum_flags};
 use ash::vk;
 
 vk_enum_flags! {
@@ -95,28 +97,6 @@ pub struct Viewport {
 }
 
 impl Viewport {
-    pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
-        Self {
-            x,
-            y,
-            width,
-            height,
-            min_depth: 0.0,
-            max_depth: 1.0,
-        }
-    }
-
-    pub fn from_vk(viewport: vk::Viewport) -> Self {
-        Self {
-            x: viewport.x,
-            y: viewport.y,
-            width: viewport.width,
-            height: viewport.height,
-            min_depth: viewport.min_depth,
-            max_depth: viewport.max_depth,
-        }
-    }
-
     pub fn to_vk(self) -> vk::Viewport {
         vk::Viewport {
             x: self.x,
@@ -154,6 +134,176 @@ impl Rect2D {
                 y: self.offset[1],
             },
             extent: self.extent.to_vk(),
+        }
+    }
+}
+
+// vk_enum_flags! {
+//     pub struct DependencyFlags: vk::DependencyFlags {
+//         BY_REGION => BY_REGION,
+//         VIEW_LOCAL => VIEW_LOCAL,
+//         DEVICE_GROUP => DEVICE_GROUP,
+//     }
+// }
+
+vk_enum_flags! {
+    pub struct ImageAspectFlags: vk::ImageAspectFlags {
+        COLOR => COLOR,
+        DEPTH => DEPTH,
+        STENCIL => STENCIL,
+        METADATA => METADATA,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ImageSubresourceRange {
+    pub aspect_mask: ImageAspectFlags,
+    pub base_mip_level: u32,
+    pub level_count: u32,
+    pub base_array_layer: u32,
+    pub layer_count: u32,
+}
+
+impl ImageSubresourceRange {
+    pub fn new(
+        aspect_mask: ImageAspectFlags,
+        base_mip_level: u32,
+        level_count: u32,
+        base_array_layer: u32,
+        layer_count: u32,
+    ) -> Self {
+        Self {
+            aspect_mask,
+            base_mip_level,
+            level_count,
+            base_array_layer,
+            layer_count,
+        }
+    }
+
+    pub fn to_vk(self) -> vk::ImageSubresourceRange {
+        vk::ImageSubresourceRange {
+            aspect_mask: self.aspect_mask.to_vk(),
+            base_mip_level: self.base_mip_level,
+            level_count: self.level_count,
+            base_array_layer: self.base_array_layer,
+            layer_count: self.layer_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct MemoryBarrier2 {
+    pub src_stage_mask: PipelineStageFlags2,
+    pub src_access_mask: AccessFlags2,
+    pub dst_stage_mask: PipelineStageFlags2,
+    pub dst_access_mask: AccessFlags2,
+}
+
+impl MemoryBarrier2 {
+    pub fn to_vk(self) -> vk::MemoryBarrier2<'static> {
+        vk::MemoryBarrier2::default()
+            .src_stage_mask(self.src_stage_mask.to_vk())
+            .src_access_mask(self.src_access_mask.to_vk())
+            .dst_stage_mask(self.dst_stage_mask.to_vk())
+            .dst_access_mask(self.dst_access_mask.to_vk())
+    }
+}
+
+#[derive(Clone)]
+pub struct BufferMemoryBarrier2 {
+    pub buffer: Arc<Buffer>,
+    pub src_stage_mask: PipelineStageFlags2,
+    pub src_access_mask: AccessFlags2,
+    pub dst_stage_mask: PipelineStageFlags2,
+    pub dst_access_mask: AccessFlags2,
+    pub offset: u64,
+    pub size: u64,
+}
+
+impl BufferMemoryBarrier2 {
+    pub fn to_vk(self) -> vk::BufferMemoryBarrier2<'static> {
+        vk::BufferMemoryBarrier2::default()
+            .buffer(self.buffer.vk_handle())
+            .src_stage_mask(self.src_stage_mask.to_vk())
+            .src_access_mask(self.src_access_mask.to_vk())
+            .dst_stage_mask(self.dst_stage_mask.to_vk())
+            .dst_access_mask(self.dst_access_mask.to_vk())
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .offset(self.offset)
+            .size(self.size)
+    }
+}
+
+pub struct ImageMemoryBarrier2 {
+    pub image: Arc<Image>,
+    pub src_stage_mask: PipelineStageFlags2,
+    pub src_access_mask: AccessFlags2,
+    pub dst_stage_mask: PipelineStageFlags2,
+    pub dst_access_mask: AccessFlags2,
+    pub old_layout: ImageLayout,
+    pub new_layout: ImageLayout,
+}
+
+impl ImageMemoryBarrier2 {
+    pub fn to_vk(self) -> vk::ImageMemoryBarrier2<'static> {
+        vk::ImageMemoryBarrier2::default()
+            .image(self.image.vk_handle())
+            .src_stage_mask(self.src_stage_mask.to_vk())
+            .src_access_mask(self.src_access_mask.to_vk())
+            .dst_stage_mask(self.dst_stage_mask.to_vk())
+            .dst_access_mask(self.dst_access_mask.to_vk())
+            .old_layout(self.old_layout.to_vk())
+            .new_layout(self.new_layout.to_vk())
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ImageSubresourceLayers {
+    pub aspect_mask: ImageAspectFlags,
+    pub mip_level: u32,
+    pub base_array_layer: u32,
+    pub layer_count: u32,
+}
+
+impl ImageSubresourceLayers {
+    pub fn to_vk(self) -> vk::ImageSubresourceLayers {
+        vk::ImageSubresourceLayers {
+            aspect_mask: self.aspect_mask.to_vk(),
+            mip_level: self.mip_level,
+            base_array_layer: self.base_array_layer,
+            layer_count: self.layer_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BufferImageCopy {
+    pub buffer_offset: u64,
+    pub buffer_row_length: u32,
+    pub buffer_image_height: u32,
+    pub image_subresource: ImageSubresourceLayers,
+    pub image_offset: [i32; 3],
+    pub image_extent: Extent3D,
+}
+
+
+impl BufferImageCopy {
+    pub fn to_vk(self) -> vk::BufferImageCopy {
+        vk::BufferImageCopy {
+            buffer_offset: self.buffer_offset,
+            buffer_row_length: self.buffer_row_length,
+            buffer_image_height: self.buffer_image_height,
+            image_subresource: self.image_subresource.to_vk(),
+            image_offset: vk::Offset3D {
+                x: self.image_offset[0],
+                y: self.image_offset[1],
+                z: self.image_offset[2],
+            },
+            image_extent: self.image_extent.to_vk(),
         }
     }
 }

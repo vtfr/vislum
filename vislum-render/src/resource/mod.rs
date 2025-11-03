@@ -50,7 +50,11 @@ impl ResourceManager {
     }
 
     pub fn resolve_texture_image(&self, id: ResourceId<Texture>) -> Option<Arc<Image>> {
-        self.textures.get(id).map(|texture| texture.image.clone())
+        self.textures.get(id).map(|texture| texture.image().clone())
+    }
+
+    pub fn resolve_texture_view(&self, id: ResourceId<Texture>) -> Option<std::sync::Arc<vislum_render_rhi::image::ImageView>> {
+        self.textures.get(id).map(|texture| texture.view().clone())
     }
 
     /// Creates a mesh with data and returns the resource id and upload task.

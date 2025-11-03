@@ -2,7 +2,7 @@ use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
 use smallvec::SmallVec;
 use vislum_render_rhi::{
-    command::{CommandPool, AutoCommandBuffer},
+    command::{CommandPool, CommandEncoder},
     device::Device,
     queue::Queue,
     image::Image,
@@ -48,12 +48,17 @@ impl<'a> PrepareContext<'a> {
         self.write.push(FramePassResource::Texture(id));
         self.resource_manager.resolve_texture_image(id)
     }
+
+    pub fn read_mesh(&mut self, id: ResourceId<Mesh>) -> Option<&Mesh> {
+        self.read.push(FramePassResource::Mesh(id));
+        self.resource_manager.get_mesh(id)
+    }
 }
 
 /// The context for executing a frame graph node.
 pub struct ExecuteContext {
     /// The command buffer to use for executing the pass.
-    pub command_buffer: AutoCommandBuffer,
+    pub command_buffer: CommandEncoder,
 }
 
 type ExecuteFn = Box<dyn FnMut(&mut ExecuteContext) + 'static>;
@@ -120,7 +125,7 @@ pub struct FrameGraphSubmitInfo {
 }
 
 impl FrameGraph {
-    pub fn new(device: Arc<Device>, queue: Arc<Queue>, allocator: Arc<MemoryAllocator>) -> Self {
+    pub fn new(device: Arc<Device>, queue: Arc<Queue>, _allocator: Arc<MemoryAllocator>) -> Self {
         // TODO: Get actual queue family index
         let queue_family_index = 0;
         let command_pool = CommandPool::new(device.clone(), queue_family_index);
@@ -164,7 +169,7 @@ impl FrameGraph {
         let mut raw_command_buffer = self.command_pool.allocate(CommandBufferLevel::PRIMARY);
         raw_command_buffer.begin(CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         
-        let auto_command_buffer = AutoCommandBuffer::new(raw_command_buffer);
+        let auto_command_buffer = CommandEncoder::new(raw_command_buffer);
 
         // Prepare the execute context
         let mut execute_context = ExecuteContext { command_buffer: auto_command_buffer };
@@ -172,6 +177,7 @@ impl FrameGraph {
         // Execute the prepared nodes
         for mut node in prepared {
             node.execute(&mut execute_context);
+            std::mem::forget(node);
         }
 
         // Get the command buffer back and end recording
@@ -179,12 +185,12 @@ impl FrameGraph {
         auto_command_buffer.command_buffer_mut().end();
         let raw_command_buffer = auto_command_buffer.into_command_buffer();
 
-        self.submit(&raw_command_buffer, submit_info);
+        self.submit(raw_command_buffer, submit_info);
     }
 
-    fn submit(&self, command_buffer: &vislum_render_rhi::command::CommandBuffer, submit_info: FrameGraphSubmitInfo) {
-        command_buffer.submit(
-            self.queue.clone(),
+    fn submit(&self, command_buffer: vislum_render_rhi::command::RawCommandBuffer, submit_info: FrameGraphSubmitInfo) {
+        self.queue.submit(
+            command_buffer,
             submit_info.wait_semaphores,
             submit_info.signal_semaphores,
             submit_info.signal_fence,

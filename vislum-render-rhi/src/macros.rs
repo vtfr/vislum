@@ -264,3 +264,34 @@ macro_rules! vk_enum_flags {
         }
     };
 }
+
+#[macro_export]
+macro_rules! impl_atomic_id {
+    (
+        $(#[$meta:meta])*
+        $vis:vis struct $ident:ident
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Default)]
+        $vis struct $ident(u64);
+
+        impl $ident {
+            pub fn new() -> Self {
+                static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+                Self(COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+            }
+
+            #[inline]
+            pub const fn inner(self) -> u64 {
+                self.0
+            }
+        }
+
+        impl std::fmt::Display for $ident {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self.0)
+            }
+        }
+    };
+}

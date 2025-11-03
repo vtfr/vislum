@@ -6,6 +6,7 @@ use super::{Extent3D, ImageFormat};
 use crate::{
     AshHandle, DebugWrapper, VkHandle,
     device::Device,
+    impl_atomic_id,
     memory::{MemoryAllocation, MemoryAllocator, MemoryLocation},
     swapchain::Swapchain,
     vk_enum, vk_enum_flags,
@@ -71,7 +72,10 @@ impl Default for ImageCreateInfo {
     }
 }
 
+impl_atomic_id!(pub struct ImageId);
+
 pub struct Image {
+    id: ImageId,
     device: Arc<Device>,
     image: DebugWrapper<vk::Image>,
     storage: ImageStorage,
@@ -118,10 +122,23 @@ impl Image {
         }
 
         Arc::new(Self {
+            id: ImageId::new(),
             device,
             image: DebugWrapper(image),
             storage: ImageStorage::User { memory },
         })
+    }
+
+    /// Returns the ID of the image.
+    #[inline]
+    pub fn id(&self) -> ImageId {
+        self.id
+    }
+
+    /// Returns true if the image is a swapchain image.
+    #[inline]
+    pub fn is_swapchain_image(&self) -> bool {
+        matches!(self.storage, ImageStorage::Swapchain { .. })
     }
 
     pub(crate) fn from_swapchain_image(
@@ -129,6 +146,7 @@ impl Image {
         swapchain_image: vk::Image,
     ) -> Arc<Self> {
         Arc::new(Self {
+            id: ImageId::new(),
             device: swapchain.device().clone(),
             image: DebugWrapper(swapchain_image),
             storage: ImageStorage::Swapchain { swapchain },

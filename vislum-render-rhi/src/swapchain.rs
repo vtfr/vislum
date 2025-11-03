@@ -62,7 +62,7 @@ impl Swapchain {
             .unwrap_or_else(|| formats[0]);
         
         let image_format = ImageFormat::from_vk(surface_format.format)
-            .unwrap_or(ImageFormat::Rgba8Unorm);
+            .unwrap();
 
         // Choose image count
         let mut image_count = create_info

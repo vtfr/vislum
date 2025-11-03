@@ -1,7 +1,11 @@
 use std::{borrow::Cow, sync::Arc};
 
-use vislum_render_rhi::{buffer::{Buffer, BufferCreateInfo, BufferUsage}, memory::{MemoryAllocator, MemoryLocation}};
-use crate::graph::{FrameNode, PrepareContext, ExecuteContext};
+use crate::graph::{ExecuteContext, FrameNode, PrepareContext};
+use vislum_render_rhi::{
+    buffer::{Buffer, BufferCreateInfo, BufferUsage},
+    command::{AccessFlags2, BufferMemoryBarrier2, PipelineStageFlags2},
+    memory::{MemoryAllocator, MemoryLocation},
+};
 
 /// A vertex with position, normal, and UV coordinates.
 #[repr(C)]
@@ -64,11 +68,8 @@ impl Mesh {
             bytemuck::cast_slice(&vertices),
         );
 
-        let index_staging = Buffer::new_staging_with_data(
-            device,
-            allocator,
-            bytemuck::cast_slice(&indices),
-        );
+        let index_staging =
+            Buffer::new_staging_with_data(device, allocator, bytemuck::cast_slice(&indices));
 
         let mesh = Mesh {
             vertex_buffer: vertex_buffer.clone(),
@@ -124,7 +125,10 @@ impl FrameNode for MeshUploadTask {
         "upload_mesh".into()
     }
 
-    fn prepare(&self, _context: &mut PrepareContext) -> Box<dyn FnMut(&mut ExecuteContext) + 'static> {
+    fn prepare(
+        &self,
+        _context: &mut PrepareContext,
+    ) -> Box<dyn FnMut(&mut ExecuteContext) + 'static> {
         let vertex_buffer = self.vertex_buffer.clone();
         let index_buffer = self.index_buffer.clone();
         let vertex_staging = self.vertex_staging.clone();
@@ -133,22 +137,87 @@ impl FrameNode for MeshUploadTask {
         let index_size = (self.index_count * std::mem::size_of::<u16>()) as u64;
 
         Box::new(move |execute_context| {
+            let cmd = &mut execute_context.command_buffer;
+
+            // Transition the vertex bufer and index buffer to be read.
+            cmd.pipeline_barrier(
+                std::iter::empty(),
+                [vertex_buffer.clone(), index_buffer.clone()]
+                    .into_iter()
+                    .map(|buffer| BufferMemoryBarrier2 {
+                        size: buffer.size(),
+                        buffer,
+                        src_stage_mask: PipelineStageFlags2::TOP_OF_PIPE,
+                        src_access_mask: AccessFlags2::NONE,
+                        dst_stage_mask: PipelineStageFlags2::TRANSFER,
+                        dst_access_mask: AccessFlags2::TRANSFER_WRITE,
+                        offset: 0,
+                    }),
+                std::iter::empty(),
+            );
+
+            // Transition the vertex staging buffer and index staging buffer to
+            // be read from.
+            cmd.pipeline_barrier(
+                std::iter::empty(),
+                [vertex_staging.clone(), index_staging.clone()]
+                    .into_iter()
+                    .map(|buffer| BufferMemoryBarrier2 {
+                        size: buffer.size(),
+                        buffer,
+                        src_stage_mask: PipelineStageFlags2::TOP_OF_PIPE,
+                        src_access_mask: AccessFlags2::NONE,
+                        dst_stage_mask: PipelineStageFlags2::TRANSFER,
+                        dst_access_mask: AccessFlags2::TRANSFER_READ,
+                        offset: 0,
+                    }),
+                std::iter::empty(),
+            );
+
             // Copy vertex buffer
-            execute_context.command_buffer.copy_buffer(
-                &vertex_staging,
-                &vertex_buffer,
+            cmd.copy_buffer(
+                vertex_staging.clone(),
+                vertex_buffer.clone(),
                 0,
                 0,
                 vertex_size,
             );
 
             // Copy index buffer
-            execute_context.command_buffer.copy_buffer(
-                &index_staging,
-                &index_buffer,
+            cmd.copy_buffer(
+                index_staging.clone(),
+                index_buffer.clone(),
                 0,
                 0,
                 index_size,
+            );
+
+            // Transition the vertex buffer and index buffer to be used as vertex and index buffers.
+            cmd.pipeline_barrier(
+                std::iter::empty(),
+                [
+                    (
+                        vertex_buffer.clone(),
+                        PipelineStageFlags2::VERTEX_INPUT,
+                        AccessFlags2::VERTEX_ATTRIBUTE_READ,
+                    ),
+                    (
+                        index_buffer.clone(),
+                        PipelineStageFlags2::VERTEX_INPUT,
+                        AccessFlags2::INDEX_READ,
+                    ),
+                ]
+                .into_iter()
+                .map(|(buffer, dst_stage_mask, dst_access_mask)| BufferMemoryBarrier2 {
+                    size: buffer.size(),
+                    buffer,
+                    src_stage_mask: PipelineStageFlags2::TRANSFER,
+                    src_access_mask: AccessFlags2::TRANSFER_WRITE,
+                    dst_stage_mask,
+                    dst_access_mask,
+                    offset: 0,
+                }),
+                std::iter::empty(),
             );
         })
     }

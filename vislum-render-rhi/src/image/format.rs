@@ -8,6 +8,7 @@ vk_enum! {
         Rgba8Srgb => R8G8B8A8_SRGB,
         Rgb8Unorm => R8G8B8_UNORM,
         Rgb8Srgb => R8G8B8_SRGB,
+        Bgra8Unorm => B8G8R8A8_UNORM,
     }
 }
 

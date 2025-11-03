@@ -1,9 +1,14 @@
 use std::sync::Arc;
 
 use ash::vk;
+use smallvec::SmallVec;
 
-use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, sync::{Fence, Semaphore}, queue::Queue, vk_enum};
-use crate::command::types::{CommandBufferUsageFlags, ImageLayout, AccessFlags2, PipelineStageFlags2, PipelineBindPoint, IndexType, Viewport, Rect2D};
+use crate::command::types::{
+    CommandBufferUsageFlags, ImageLayout, IndexType, PipelineBindPoint,
+    Rect2D, Viewport,
+};
+use crate::command::{BufferMemoryBarrier2, ImageMemoryBarrier2, MemoryBarrier2};
+use crate::{AshHandle, DebugWrapper, VkHandle, device::Device, vk_enum};
 
 vk_enum! {
     pub enum CommandBufferLevel: ash::vk::CommandBufferLevel {
@@ -25,7 +30,10 @@ impl CommandPool {
             .queue_family_index(queue_family_index);
 
         let pool = unsafe {
-            device.ash_handle().create_command_pool(&create_info, None).unwrap()
+            device
+                .ash_handle()
+                .create_command_pool(&create_info, None)
+                .unwrap()
         };
 
         Arc::new(Self {
@@ -35,17 +43,20 @@ impl CommandPool {
     }
 
     /// Allocates a command buffer from this pool.
-    pub fn allocate(&self, level: CommandBufferLevel) -> CommandBuffer {
+    pub fn allocate(&self, level: CommandBufferLevel) -> RawCommandBuffer {
         let allocate_info = vk::CommandBufferAllocateInfo::default()
             .command_pool(self.pool.0)
             .level(level.to_vk())
             .command_buffer_count(1);
 
         let command_buffers = unsafe {
-            self.device.ash_handle().allocate_command_buffers(&allocate_info).unwrap()
+            self.device
+                .ash_handle()
+                .allocate_command_buffers(&allocate_info)
+                .unwrap()
         };
 
-        CommandBuffer {
+        RawCommandBuffer {
             device: Arc::clone(&self.device),
             command_buffer: DebugWrapper(command_buffers[0]),
             pool: self.pool.0,
@@ -57,26 +68,35 @@ impl CommandPool {
 impl Drop for CommandPool {
     fn drop(&mut self) {
         unsafe {
-            self.device.ash_handle().destroy_command_pool(self.pool.0, None);
+            self.device
+                .ash_handle()
+                .destroy_command_pool(self.pool.0, None);
         }
     }
 }
 
-pub struct CommandBuffer {
+/// A raw command buffer.
+///
+/// Corresponds to a [`VkCommandBuffer`].
+///
+/// [`VkCommandBuffer`]: https://www.khronos.org/registry/vulkan/specs/1.3-extensions/man/html/VkCommandBuffer.html
+pub struct RawCommandBuffer {
     device: Arc<Device>,
     command_buffer: DebugWrapper<vk::CommandBuffer>,
     pool: vk::CommandPool,
     recording: bool,
 }
 
-impl CommandBuffer {
+impl RawCommandBuffer {
     /// Begins recording commands into the command buffer.
     pub fn begin(&mut self, flags: CommandBufferUsageFlags) {
-        let begin_info = vk::CommandBufferBeginInfo::default()
-            .flags(flags.to_vk());
+        let begin_info = vk::CommandBufferBeginInfo::default().flags(flags.to_vk());
 
         unsafe {
-            self.device.ash_handle().begin_command_buffer(self.command_buffer.0, &begin_info).unwrap();
+            self.device
+                .ash_handle()
+                .begin_command_buffer(self.command_buffer.0, &begin_info)
+                .unwrap();
         }
 
         self.recording = true;
@@ -85,7 +105,10 @@ impl CommandBuffer {
     /// Ends recording commands into the command buffer.
     pub fn end(&mut self) {
         unsafe {
-            self.device.ash_handle().end_command_buffer(self.command_buffer.0).unwrap();
+            self.device
+                .ash_handle()
+                .end_command_buffer(self.command_buffer.0)
+                .unwrap();
         }
 
         self.recording = false;
@@ -94,10 +117,10 @@ impl CommandBuffer {
     /// Resets the command buffer.
     pub fn reset(&mut self) {
         unsafe {
-            self.device.ash_handle().reset_command_buffer(
-                self.command_buffer.0,
-                vk::CommandBufferResetFlags::empty(),
-            ).unwrap();
+            self.device
+                .ash_handle()
+                .reset_command_buffer(self.command_buffer.0, vk::CommandBufferResetFlags::empty())
+                .unwrap();
         }
 
         self.recording = false;
@@ -107,14 +130,18 @@ impl CommandBuffer {
     pub fn begin_rendering(&self, rendering_info: &vk::RenderingInfo) {
         unsafe {
             use ash::khr::dynamic_rendering::Device;
-            let loader = Device::new(self.device.instance().ash_handle(), self.device.ash_handle());
+            let loader = Device::new(
+                self.device.instance().ash_handle(),
+                self.device.ash_handle(),
+            );
             loader.cmd_begin_rendering(self.command_buffer.0, rendering_info);
         }
     }
 
     /// Sets the viewport.
-    pub fn set_viewport(&self, first_viewport: u32, viewports: &[Viewport]) {
-        let viewports_vk: Vec<_> = viewports.iter().map(|v| v.to_vk()).collect();
+    pub fn set_viewport(&self, first_viewport: u32, viewports: impl IntoIterator<Item = Viewport>) {
+        let viewports_vk: SmallVec<[vk::Viewport; 8]> =
+            viewports.into_iter().map(|v| v.to_vk()).collect();
         unsafe {
             self.device.ash_handle().cmd_set_viewport(
                 self.command_buffer.0,
@@ -125,8 +152,9 @@ impl CommandBuffer {
     }
 
     /// Sets the scissor rectangles.
-    pub fn set_scissor(&self, first_scissor: u32, scissors: &[Rect2D]) {
-        let scissors_vk: Vec<_> = scissors.iter().map(|s| s.to_vk()).collect();
+    pub fn set_scissor(&self, first_scissor: u32, scissors: impl IntoIterator<Item = Rect2D>) {
+        let scissors_vk: SmallVec<[vk::Rect2D; 8]> =
+            scissors.into_iter().map(|s| s.to_vk()).collect();
         unsafe {
             self.device.ash_handle().cmd_set_scissor(
                 self.command_buffer.0,
@@ -153,17 +181,20 @@ impl CommandBuffer {
         pipeline_bind_point: PipelineBindPoint,
         layout: vk::PipelineLayout,
         first_set: u32,
-        descriptor_sets: &[vk::DescriptorSet],
-        dynamic_offsets: &[u32],
+        descriptor_sets: impl IntoIterator<Item = vk::DescriptorSet>,
+        dynamic_offsets: impl IntoIterator<Item = u32>,
     ) {
+        let descriptor_sets: SmallVec<[vk::DescriptorSet; 4]> =
+            descriptor_sets.into_iter().collect();
+        let dynamic_offsets: SmallVec<[u32; 4]> = dynamic_offsets.into_iter().collect();
         unsafe {
             self.device.ash_handle().cmd_bind_descriptor_sets(
                 self.command_buffer.0,
                 pipeline_bind_point.to_vk(),
                 layout,
                 first_set,
-                descriptor_sets,
-                dynamic_offsets,
+                &descriptor_sets,
+                &dynamic_offsets,
             );
         }
     }
@@ -172,8 +203,8 @@ impl CommandBuffer {
     pub fn bind_vertex_buffers(
         &self,
         first_binding: u32,
-        buffers: &[vk::Buffer],
-        offsets: &[vk::DeviceSize],
+        buffers: &SmallVec<[vk::Buffer; 4]>,
+        offsets: &SmallVec<[vk::DeviceSize; 4]>,
     ) {
         unsafe {
             self.device.ash_handle().cmd_bind_vertex_buffers(
@@ -189,12 +220,14 @@ impl CommandBuffer {
     pub fn bind_vertex_buffers_buffers(
         &self,
         first_binding: u32,
-        buffers: &[&crate::buffer::Buffer],
-        offsets: &[vk::DeviceSize],
+        buffers: impl IntoIterator<Item = Arc<crate::buffer::Buffer>>,
+        offsets: impl IntoIterator<Item = u64>,
     ) {
         use crate::VkHandle;
-        let buffer_handles: Vec<_> = buffers.iter().map(|b| b.vk_handle()).collect();
-        self.bind_vertex_buffers(first_binding, &buffer_handles, offsets);
+        let buffer_handles: SmallVec<[vk::Buffer; 4]> =
+            buffers.into_iter().map(|b| b.vk_handle()).collect();
+        let offsets: SmallVec<[vk::DeviceSize; 4]> = offsets.into_iter().collect();
+        self.bind_vertex_buffers(first_binding, &buffer_handles, &offsets);
     }
 
     /// Binds an index buffer.
@@ -217,7 +250,7 @@ impl CommandBuffer {
     /// Binds an index buffer from an RHI Buffer type.
     pub fn bind_index_buffer_buffer(
         &self,
-        buffer: &crate::buffer::Buffer,
+        buffer: &Arc<crate::buffer::Buffer>,
         offset: vk::DeviceSize,
         index_type: IndexType,
     ) {
@@ -250,64 +283,99 @@ impl CommandBuffer {
     pub fn end_rendering(&self) {
         unsafe {
             use ash::khr::dynamic_rendering::Device;
-            let loader = Device::new(self.device.instance().ash_handle(), self.device.ash_handle());
+            let loader = Device::new(
+                self.device.instance().ash_handle(),
+                self.device.ash_handle(),
+            );
             loader.cmd_end_rendering(self.command_buffer.0);
         }
     }
 
-    /// Submits this command buffer to a queue.
-    pub fn submit(
+    /// Records a pipeline barrier.
+    pub fn pipeline_barrier(
         &self,
-        queue: Arc<Queue>,
-        wait_semaphores: Vec<Arc<Semaphore>>,
-        signal_semaphores: Vec<Arc<Semaphore>>,
-        fence: Option<Arc<Fence>>,
+        memory_barriers: impl IntoIterator<Item = MemoryBarrier2>,
+        buffer_memory_barriers: impl IntoIterator<Item = BufferMemoryBarrier2>,
+        image_memory_barriers: impl IntoIterator<Item = ImageMemoryBarrier2>,
     ) {
-        let wait_semaphore_handles: Vec<_> = wait_semaphores.iter()
-            .map(|s| s.vk_handle())
-            .collect();
-        let wait_dst_stage_masks: Vec<_> = vec![vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT; wait_semaphore_handles.len()];
+        let memory_barriers_vk: SmallVec<[vk::MemoryBarrier2; 4]> =
+            memory_barriers.into_iter().map(|b| b.to_vk()).collect();
+        let buffer_memory_barriers_vk: SmallVec<[vk::BufferMemoryBarrier2; 4]> =
+            buffer_memory_barriers
+                .into_iter()
+                .map(|b| b.to_vk())
+                .collect();
+        let image_memory_barriers_vk: SmallVec<[vk::ImageMemoryBarrier2; 4]> =
+            image_memory_barriers
+                .into_iter()
+                .map(|b| b.to_vk())
+                .collect();
 
-        let signal_semaphore_handles: Vec<_> = signal_semaphores.iter()
-            .map(|s| s.vk_handle())
-            .collect();
-
-        let command_buffer_handle = self.command_buffer.0;
-        let command_buffers = [command_buffer_handle];
-        let submit_info = vk::SubmitInfo::default()
-            .command_buffers(&command_buffers)
-            .wait_semaphores(&wait_semaphore_handles)
-            .wait_dst_stage_mask(&wait_dst_stage_masks)
-            .signal_semaphores(&signal_semaphore_handles);
-
-        let fence_handle = fence.map(|f| f.vk_handle()).unwrap_or(vk::Fence::null());
-        let queue_handle = queue.vk_handle();
+        let barrier_info = vk::DependencyInfo::default()
+            .memory_barriers(&memory_barriers_vk)
+            .buffer_memory_barriers(&buffer_memory_barriers_vk)
+            .image_memory_barriers(&image_memory_barriers_vk);
 
         unsafe {
-            self.device.ash_handle().queue_submit(
-                queue_handle,
-                &[submit_info],
-                fence_handle,
-            ).unwrap();
+            self.device
+                .ash_handle()
+                .cmd_pipeline_barrier2(self.command_buffer.0, &barrier_info);
         }
     }
 
-    /// Returns whether this command buffer is currently recording.
-    pub fn is_recording(&self) -> bool {
-        self.recording
+    /// Copies data from one buffer to another.
+    pub fn copy_buffer(
+        &self,
+        src_buffer: vk::Buffer,
+        dst_buffer: vk::Buffer,
+        src_offset: u64,
+        dst_offset: u64,
+        size: u64,
+    ) {
+        let copy_region = vk::BufferCopy::default()
+            .src_offset(src_offset)
+            .dst_offset(dst_offset)
+            .size(size);
+
+        unsafe {
+            self.device.ash_handle().cmd_copy_buffer(
+                self.command_buffer.0,
+                src_buffer,
+                dst_buffer,
+                &[copy_region],
+            );
+        }
     }
 
-    /// Returns the device associated with this command buffer.
+    /// Copies data from a buffer to an image.
+    pub fn copy_buffer_to_image(
+        &self,
+        src_buffer: vk::Buffer,
+        dst_image: vk::Image,
+        dst_layout: ImageLayout,
+        regions: &SmallVec<[vk::BufferImageCopy; 4]>,
+    ) {
+        unsafe {
+            self.device.ash_handle().cmd_copy_buffer_to_image(
+                self.command_buffer.0,
+                src_buffer,
+                dst_image,
+                dst_layout.to_vk(),
+                regions,
+            );
+        }
+    }
+
+    /// Returns a reference to the device.
     pub fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl VkHandle for CommandBuffer {
+impl VkHandle for RawCommandBuffer {
     type Handle = vk::CommandBuffer;
 
     fn vk_handle(&self) -> Self::Handle {
         self.command_buffer.0
     }
 }
-

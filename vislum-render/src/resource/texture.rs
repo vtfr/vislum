@@ -4,7 +4,14 @@ use crate::graph::{ExecuteContext, FrameNode, PrepareContext};
 use ash::vk;
 use vislum_render_rhi::{
     buffer::Buffer,
-    image::{Extent3D, Image, ImageCreateInfo, ImageFormat, ImageType, ImageUsage},
+    command::{
+        AccessFlags2, BufferImageCopy, ImageAspectFlags, ImageLayout, ImageMemoryBarrier2,
+        ImageSubresourceLayers, PipelineStageFlags2,
+    },
+    image::{
+        Extent3D, Image, ImageCreateInfo, ImageFormat, ImageType, ImageUsage, ImageView,
+        ImageViewCreateInfo, ImageViewType,
+    },
     memory::MemoryAllocator,
 };
 
@@ -39,7 +46,8 @@ pub struct TextureCreateInfo {
 }
 
 pub struct Texture {
-    pub(crate) image: Arc<Image>,
+    image: Arc<Image>,
+    view: Arc<ImageView>,
 }
 
 impl Texture {
@@ -76,8 +84,26 @@ impl Texture {
             vislum_render_rhi::memory::MemoryLocation::GpuOnly,
         );
 
+        // Create default image view
+        let view_type = ImageViewType::from(rhi_dimensions);
+        let view = ImageView::new(
+            device.clone(),
+            ImageViewCreateInfo {
+                image: image.clone(),
+                view_type,
+                format: rhi_format,
+                components: vk::ComponentMapping::default(),
+                subresource_range: vk::ImageSubresourceRange::default()
+                    .aspect_mask(vk::ImageAspectFlags::COLOR)
+                    .base_mip_level(0)
+                    .level_count(1)
+                    .base_array_layer(0)
+                    .layer_count(1),
+            },
+        );
+
         // Create staging buffer with host-visible memory
-        let staging = Buffer::new_staging_with_data(device, allocator, data);
+        let staging = Buffer::new_staging_with_data(device.clone(), allocator, data);
 
         let upload_task = TextureUploadTask {
             image: image.clone(),
@@ -89,12 +115,17 @@ impl Texture {
             },
         };
 
-        (Texture { image }, upload_task)
+        (Texture { image, view }, upload_task)
     }
 
     #[inline]
     pub fn image(&self) -> &Arc<Image> {
         &self.image
+    }
+
+    #[inline]
+    pub fn view(&self) -> &Arc<ImageView> {
+        &self.view
     }
 }
 
@@ -115,54 +146,59 @@ impl FrameNode for TextureUploadTask {
     ) -> Box<dyn FnMut(&mut ExecuteContext) + 'static> {
         let destination = self.image.clone();
         let staging_buffer = self.staging_buffer.clone();
-        let extent = self.extent;
+        let extent = Extent3D::from_vk(self.extent);
 
         Box::new(move |execute_context| {
+            let cmd = &mut execute_context.command_buffer;
+
             // Transition image from undefined to transfer destination layout
-            use vislum_render_rhi::command::types::{
-                AccessFlags2, ImageLayout, PipelineStageFlags2,
-            };
-            execute_context.command_buffer.transition_image(
-                &destination,
-                ImageLayout::Undefined,
-                ImageLayout::TransferDstOptimal,
-                AccessFlags2::NONE,
-                AccessFlags2::TRANSFER_WRITE,
-                PipelineStageFlags2::TOP_OF_PIPE,
-                PipelineStageFlags2::TRANSFER,
+            cmd.pipeline_barrier(
+                std::iter::empty(),
+                std::iter::empty(),
+                std::iter::once(ImageMemoryBarrier2 {
+                    image: destination.clone(),
+                    src_stage_mask: PipelineStageFlags2::TOP_OF_PIPE,
+                    src_access_mask: AccessFlags2::NONE,
+                    dst_stage_mask: PipelineStageFlags2::TRANSFER,
+                    dst_access_mask: AccessFlags2::TRANSFER_WRITE,
+                    old_layout: ImageLayout::Undefined,
+                    new_layout: ImageLayout::TransferDstOptimal,
+                }),
             );
 
-            // Copy staging buffer to image
-            let copy_region = vk::BufferImageCopy::default()
-                .buffer_offset(0)
-                .buffer_row_length(0) // 0 means tightly packed
-                .buffer_image_height(0) // 0 means tightly packed
-                .image_subresource(
-                    vk::ImageSubresourceLayers::default()
-                        .aspect_mask(vk::ImageAspectFlags::COLOR)
-                        .mip_level(0)
-                        .base_array_layer(0)
-                        .layer_count(1),
-                )
-                .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-                .image_extent(extent);
 
-            execute_context.command_buffer.copy_buffer_to_image(
-                &staging_buffer,
-                &destination,
+            cmd.copy_buffer_to_image(
+                staging_buffer.clone(),
+                destination.clone(),
                 ImageLayout::TransferDstOptimal,
-                &[copy_region],
+                std::iter::once(BufferImageCopy {
+                    buffer_offset: 0,
+                    buffer_row_length: 0,
+                    buffer_image_height: 0,
+                    image_subresource: ImageSubresourceLayers {
+                        aspect_mask: ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    },
+                    image_offset: [0, 0, 0],
+                    image_extent: extent,
+                }),
             );
 
             // Transition image to shader read layout
-            execute_context.command_buffer.transition_image(
-                &destination,
-                ImageLayout::TransferDstOptimal,
-                ImageLayout::ShaderReadOnlyOptimal,
-                AccessFlags2::TRANSFER_WRITE,
-                AccessFlags2::SHADER_READ,
-                PipelineStageFlags2::TRANSFER,
-                PipelineStageFlags2::FRAGMENT_SHADER,
+            cmd.pipeline_barrier(
+                std::iter::empty(),
+                std::iter::empty(),
+                std::iter::once(ImageMemoryBarrier2 {
+                    image: destination.clone(),
+                    src_stage_mask: PipelineStageFlags2::TRANSFER,
+                    src_access_mask: AccessFlags2::TRANSFER_WRITE,
+                    dst_stage_mask: PipelineStageFlags2::FRAGMENT_SHADER,
+                    dst_access_mask: AccessFlags2::SHADER_READ,
+                    old_layout: ImageLayout::TransferDstOptimal,
+                    new_layout: ImageLayout::ShaderReadOnlyOptimal,
+                }),
             );
         })
     }

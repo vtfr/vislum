@@ -4,10 +4,10 @@ use vislum_render_rhi::{
     device::Device,
     memory::MemoryAllocator,
     queue::Queue,
-    image::Image,
+    image::{Image, ImageView},
 };
 
-use crate::{graph::{FrameGraph, pass::FrameGraphSubmitInfo, FrameNode}, resource::{ResourceManager, pool::ResourceId, texture::{Texture, TextureCreateInfo}, mesh::{Mesh, MeshUploadTask, Vertex}}};
+use crate::{graph::{FrameGraph, pass::FrameGraphSubmitInfo, FrameNode}, resource::{ResourceManager, pool::ResourceId, texture::{Texture, TextureCreateInfo}, mesh::{Mesh, Vertex}}};
 
 pub struct RenderContext {
     device: Arc<Device>,
@@ -59,10 +59,6 @@ impl RenderContext {
         id
     }
 
-    pub fn get_texture_image(&self, id: ResourceId<Texture>) -> Option<Arc<Image>> {
-        self.resource_manager.resolve_texture_image(id)
-    }
-
     /// Creates a mesh with data and returns the resource id.
     /// The upload task is automatically added to the frame graph.
     pub fn create_mesh(
@@ -73,5 +69,13 @@ impl RenderContext {
         let (id, upload_task) = self.resource_manager.create_mesh(vertices, indices);
         self.frame_graph.add_pass(upload_task);
         id
+    }
+
+    pub fn get_texture_image(&self, id: ResourceId<Texture>) -> Option<Arc<Image>> {
+        self.resource_manager.resolve_texture_image(id)
+    }
+
+    pub fn get_texture_view(&self, id: ResourceId<Texture>) -> Option<Arc<ImageView>> {
+        self.resource_manager.resolve_texture_view(id)
     }
 }
