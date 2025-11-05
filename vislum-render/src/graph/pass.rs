@@ -2,24 +2,62 @@ use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
 use smallvec::SmallVec;
 use vislum_render_rhi::{
-    command::{CommandPool, CommandEncoder},
-    device::Device,
-    queue::Queue,
-    image::Image,
-    memory::MemoryAllocator,
-    sync::{Fence, Semaphore},
+    buffer::Buffer, command::{CommandEncoder, CommandPool}, device::Device, image::Image, memory::MemoryAllocator, queue::Queue, sync::{Fence, Semaphore}
 };
 
 use crate::{
     resource::{ResourceManager, mesh::Mesh, pool::ResourceId, texture::Texture},
 };
 
-#[derive(Debug)]
 pub enum FramePassResource {
     Texture(ResourceId<Texture>),
     Mesh(ResourceId<Mesh>),
     Surface,
 }
+
+pub trait Resolve {
+    type Resolved;
+
+    /// Resolves the resource.
+    fn resolve(self, ctx: &mut PrepareContext, read: bool) -> Self::Resolved;
+}
+
+pub struct ResolvedMesh {
+    pub vertex_buffer: Arc<Buffer>,
+    pub index_buffer: Arc<Buffer>,
+}
+
+// impl Resolve for ResourceId<Texture> {
+//     type Resolved = Arc<Image>;
+
+//     fn resolve(self, ctx: &mut PrepareContext, read: bool) -> Self::Resolved {
+//         let image = ctx.resource_manager.resolve_texture_image(self).unwrap();
+//         let resource = FramePassResource::Image(image.clone());
+
+//         if read {
+//             ctx.read.push(resource);
+//         } else {
+//             ctx.write.push(resource);
+//         }
+
+//         image
+//     }
+// }
+
+// impl Resolve for ResourceId<Mesh> {
+//     type Resolved = ResolvedMesh;
+
+//     fn resolve(self, ctx: &mut PrepareContext, read: bool) -> Self::Resolved {
+//         let mesh = ctx.resource_manager.get_mesh(self).unwrap();
+//         let vertex_buffer = mesh.vertex_buffer().clone();
+//         let index_buffer = mesh.index_buffer().clone();
+
+//         ResolvedMesh {
+//             vertex_buffer,
+//             index_buffer,
+//         }
+//     }
+// }
 
 /// Context for preparing a frame graph node.
 ///
@@ -177,7 +215,7 @@ impl FrameGraph {
         // Execute the prepared nodes
         for mut node in prepared {
             node.execute(&mut execute_context);
-            std::mem::forget(node);
+            // std::mem::forget(node);
         }
 
         // Get the command buffer back and end recording

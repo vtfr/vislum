@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
-use ash::vk::{self, AccessFlags2, ImageLayout};
+use ash::vk;
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -19,14 +19,7 @@ use vislum_render::resource::{
     texture::{Texture, TextureCreateInfo, TextureDimensions, TextureFormat},
 };
 use vislum_render_rhi::{
-    command::CommandPool,
-    device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures},
-    instance::{Instance, InstanceExtensions, Library},
-    memory::MemoryAllocator,
-    queue::Queue,
-    surface::Surface,
-    swapchain::{Swapchain, SwapchainCreateInfo},
-    sync::{Fence, Semaphore},
+    VkHandle, command::{AccessFlags2, CommandPool, ImageLayout, ImageMemoryBarrier2, IndexType, PipelineBindPoint, PipelineStageFlags2, Rect2D, Viewport}, device::{Device, DeviceCreateInfo, DeviceExtensions, DeviceFeatures}, image::Extent2D, instance::{Instance, InstanceExtensions, Library}, memory::MemoryAllocator, queue::Queue, surface::Surface, swapchain::{Swapchain, SwapchainCreateInfo}, sync::{Fence, Semaphore}
 };
 use vislum_shader::compiler::ShaderCompiler;
 
@@ -254,22 +247,22 @@ impl ApplicationHandler for App {
                 Vertex {
                     position: [-0.5, -0.5, 0.0],
                     normal: [0.0, 0.0, 1.0],
-                    uv: [0.0, 1.0],
+                    uv: [0.0, 0.0],
                 },
                 Vertex {
                     position: [0.5, -0.5, 0.0],
                     normal: [0.0, 0.0, 1.0],
-                    uv: [1.0, 1.0],
+                    uv: [1.0, 0.0],
                 },
                 Vertex {
                     position: [0.5, 0.5, 0.0],
                     normal: [0.0, 0.0, 1.0],
-                    uv: [1.0, 0.0],
+                    uv: [1.0, 1.0],
                 },
                 Vertex {
                     position: [-0.5, 0.5, 0.0],
                     normal: [0.0, 0.0, 1.0],
-                    uv: [0.0, 0.0],
+                    uv: [0.0, 1.0],
                 },
             ];
 
@@ -534,7 +527,7 @@ impl ApplicationHandler for App {
                 let multisample = vk::PipelineMultisampleStateCreateInfo::default()
                     .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
-                // Color blend
+                // Color blend (alpha blending enabled)
                 let color_blend_attachment = vk::PipelineColorBlendAttachmentState::default()
                     .color_write_mask(
                         vk::ColorComponentFlags::R
@@ -542,7 +535,13 @@ impl ApplicationHandler for App {
                             | vk::ColorComponentFlags::B
                             | vk::ColorComponentFlags::A,
                     )
-                    .blend_enable(false);
+                    .blend_enable(true)
+                    .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
+                    .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+                    .color_blend_op(vk::BlendOp::ADD)
+                    .src_alpha_blend_factor(vk::BlendFactor::ONE)
+                    .dst_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
+                    .alpha_blend_op(vk::BlendOp::ADD);
 
                 let color_blend_attachments = [color_blend_attachment];
                 let color_blend = vk::PipelineColorBlendStateCreateInfo::default()
@@ -785,14 +784,14 @@ impl ApplicationHandler for App {
                                         dst_stage_mask: PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
                                         dst_access_mask: AccessFlags2::COLOR_ATTACHMENT_WRITE,
                                         old_layout: ImageLayout::Undefined,
-                                        new_layout: ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                                        new_layout: ImageLayout::ColorAttachmentOptimal,
                                     }),
                                 );
 
                                 // Begin dynamic rendering
                                 let clear_value = vk::ClearValue {
                                     color: vk::ClearColorValue {
-                                        float32: [0.0, 0.0, 0.0, 1.0],
+                                        float32: [1.0, 1.0, 1.0, 1.0],
                                     },
                                 };
                                 let color_attachment = vk::RenderingAttachmentInfo::default()
@@ -813,17 +812,19 @@ impl ApplicationHandler for App {
 
                                 cmd.begin_rendering(&rendering_info);
 
-                                let viewport = Viewport::new(
-                                    0.0,
-                                    0.0,
-                                    window_width as f32,
-                                    window_height as f32,
-                                );
-                                cmd.set_viewport(0, &[viewport]);
+                                let viewport = Viewport {
+                                    x: 0.0,
+                                    y: 0.0,
+                                    width: window_width as f32,
+                                    height: window_height as f32,
+                                    min_depth: 0.0,
+                                    max_depth: 1.0,
+                                };
+                                cmd.set_viewport(0, [viewport]);
 
                                 let scissor =
                                     Rect2D::new([0, 0], Extent2D::new(window_width, window_height));
-                                cmd.set_scissor(0, &[scissor]);
+                                cmd.set_scissor(0, [scissor]);
 
                                 // Bind pipeline
                                 cmd.bind_pipeline(PipelineBindPoint::Graphics, pipeline);
@@ -834,21 +835,21 @@ impl ApplicationHandler for App {
                                     PipelineBindPoint::Graphics,
                                     pipeline_layout,
                                     0,
-                                    &descriptor_sets,
-                                    &[],
+                                    descriptor_sets,
+                                    [],
                                 );
 
                                 // Bind vertex buffer
                                 let vertex_offsets = [0u64];
-                                cmd.bind_vertex_buffers_buffers(
+                                cmd.bind_vertex_buffers(
                                     0,
-                                    &[&vertex_buffer],
-                                    &vertex_offsets,
+                                    [vertex_buffer.clone()],
+                                    vertex_offsets,
                                 );
 
                                 // Bind index buffer
-                                cmd.bind_index_buffer_buffer(
-                                    &index_buffer,
+                                cmd.bind_index_buffer(
+                                    index_buffer.clone(),
                                     0,
                                     IndexType::Uint16,
                                 );
@@ -867,7 +868,7 @@ impl ApplicationHandler for App {
                                         image: swapchain_image.clone(),
                                         src_stage_mask: PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
                                         src_access_mask: AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                                        dst_stage_mask: PipelineStageFlags2::BOTTOM_OF_PIPE_KHR,
+                                        dst_stage_mask: PipelineStageFlags2::BOTTOM_OF_PIPE,
                                         dst_access_mask: AccessFlags2::NONE,
                                         old_layout: ImageLayout::ColorAttachmentOptimal,
                                         new_layout: ImageLayout::PresentSrcKhr,

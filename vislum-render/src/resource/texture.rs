@@ -5,8 +5,7 @@ use ash::vk;
 use vislum_render_rhi::{
     buffer::Buffer,
     command::{
-        AccessFlags2, BufferImageCopy, ImageAspectFlags, ImageLayout, ImageMemoryBarrier2,
-        ImageSubresourceLayers, PipelineStageFlags2,
+        AccessFlags2, BufferImageCopy, BufferMemoryBarrier2, ImageAspectFlags, ImageLayout, ImageMemoryBarrier2, ImageSubresourceLayers, MemoryBarrier2, PipelineStageFlags2
     },
     image::{
         Extent3D, Image, ImageCreateInfo, ImageFormat, ImageType, ImageUsage, ImageView,
@@ -154,7 +153,15 @@ impl FrameNode for TextureUploadTask {
             // Transition image from undefined to transfer destination layout
             cmd.pipeline_barrier(
                 std::iter::empty(),
-                std::iter::empty(),
+                std::iter::once(BufferMemoryBarrier2{
+                    buffer: staging_buffer.clone(),
+                    src_stage_mask: PipelineStageFlags2::TOP_OF_PIPE,
+                    src_access_mask: AccessFlags2::NONE,
+                    dst_stage_mask: PipelineStageFlags2::TRANSFER,
+                    dst_access_mask: AccessFlags2::TRANSFER_WRITE,
+                    offset: 0,
+                    size: staging_buffer.size(),
+                }),
                 std::iter::once(ImageMemoryBarrier2 {
                     image: destination.clone(),
                     src_stage_mask: PipelineStageFlags2::TOP_OF_PIPE,

@@ -10,6 +10,7 @@ pub mod memory;
 pub mod queue;
 pub mod surface;
 pub mod swapchain;
+pub mod descriptor;
 pub mod sync;
 
 mod macros;
