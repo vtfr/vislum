@@ -1,0 +1,12 @@
+[package]
+name = "vislum-window"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vislum-render = { path = "../vislum-render" }
+vislum-render-rhi = { path = "../vislum-render-rhi" }
+winit = { workspace = true }
+anyhow = "1.0"
+log = { workspace = true }
+

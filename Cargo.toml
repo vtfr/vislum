@@ -13,6 +13,7 @@ members = [
     "vislum-shader",
     "vislum-test",
     "vislum-dxc", "vislum-render-rhi", "vislum-fs",
+    "vislum-window",
 ]
 
 [workspace.dependencies]
